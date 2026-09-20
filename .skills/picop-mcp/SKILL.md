@@ -1,9 +1,9 @@
 ---
-name: "picop-mcp"
-description: "把用户自然语言描述的工作流程直接转换为 Picop 工作流产物并导出到项目目录（通过 MCP 连接 Picop 本地 Runner）。Invoke when user says 生成工作流 / 搭建工作流 / 把流程导出到项目 / build a workflow, or asks to convert a described process into an executable workflow."
+name: 'picop-mcp'
+description: '把用户自然语言描述的工作流程直接转换为 Picop 工作流产物并导出到项目目录（通过 MCP 连接 Picop 本地 Runner）。Invoke when user says 生成工作流 / 搭建工作流 / 把流程导出到项目 / build a workflow, or asks to convert a described process into an executable workflow.'
 metadata:
   author: shengyifei@lizhi.fm
-  version: "0.1.0"
+  version: '0.1.0'
 ---
 
 # Picop MCP：自然语言 → 工作流产物
@@ -22,7 +22,7 @@ metadata:
 
 ## 前置条件（首次使用检查）
 
-1. 本机已启动 Picop Runner：`node <ai-workflow>/runner/server.mjs`（或 `npm run runner`，监听 `127.0.0.1:7523`；`<ai-workflow>` 同样替换为上面定位到的真实目录）。可用 `curl http://127.0.0.1:7523/ping` 验证。
+1. 本机已启动 Picop Runner：`node <ai-workflow>/runner/server.mjs`（监听 `127.0.0.1:7523`；`<ai-workflow>` 同样替换为上面定位到的真实目录）。可用 `curl http://127.0.0.1:7523/ping` 验证。
 2. 本机已安装任一 AI CLI 工具：Claude Code（`claude`）/ Codex（`codex`）/ DeepSeek Harness（`deepseek`）——`workflow_build` 会用它生成工作流。
 3. MCP server 已注册（在用户工具中执行一次）。
 
@@ -35,13 +35,15 @@ metadata:
    > ```
    >
    > 取结果路径（如 `/Users/lizhi/Desktop/work/workflow/ai-workflow/runner/mcp.mjs`）即可，不要使用含 `~` 的相对写法。
-
    - **Claude Code**：`claude mcp add picop -- node <上面定位到的 mcp.mjs 绝对路径>`
    - **Codex / 其他**：在 `.mcp.json`（或等价配置）添加，`args` 必须是绝对路径：
      ```json
      {
        "mcpServers": {
-         "picop": { "command": "node", "args": ["/绝对路径/ai-workflow/runner/mcp.mjs"] }
+         "picop": {
+           "command": "node",
+           "args": ["/绝对路径/ai-workflow/runner/mcp.mjs"]
+         }
        }
      }
      ```
@@ -69,12 +71,12 @@ metadata:
   - `targetDir`：**用户项目根目录的绝对路径**（向用户确认，不要猜测）。
 - 返回：`files`（实际写入的文件绝对路径列表）。
 
-| format | 产物 | 适用场景 |
-| --- | --- | --- |
-| `speckit`（默认） | `specify/workflows/<name>/workflow.yml` | 用户要在 SpecKit / Codex / Claude 中按命令步骤流水线执行 |
-| `openspec` | `openspec/schemas/<name>/schema.yaml` | 用户项目使用 OpenSpec 规范（artifacts 依赖图 + apply 跟踪） |
-| `spec` | `spec/changes/<name>/specs/<name>/workflow.yaml` | 同构 artifacts、无需安装 OpenSpec 框架，任意 agent 读 workflow.yaml 执行 |
-| `skill` | `skills/<name>/SKILL.md` | 用户要把它作为技能 `/name <prompt>` 直接触发 |
+| format            | 产物                                             | 适用场景                                                                 |
+| ----------------- | ------------------------------------------------ | ------------------------------------------------------------------------ |
+| `speckit`（默认） | `specify/workflows/<name>/workflow.yml`          | 用户要在 SpecKit / Codex / Claude 中按命令步骤流水线执行                 |
+| `openspec`        | `openspec/schemas/<name>/schema.yaml`            | 用户项目使用 OpenSpec 规范（artifacts 依赖图 + apply 跟踪）              |
+| `spec`            | `spec/changes/<name>/specs/<name>/workflow.yaml` | 同构 artifacts、无需安装 OpenSpec 框架，任意 agent 读 workflow.yaml 执行 |
+| `skill`           | `skills/<name>/SKILL.md`                         | 用户要把它作为技能 `/name <prompt>` 直接触发                             |
 
 ## ✅ 输出物校验
 

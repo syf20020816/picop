@@ -13,43 +13,43 @@ order: 3
 
 ### 1.1 输入与输出
 
-| 节点类型 | 标识 | 用途 |
-|---------|------|------|
+| 节点类型 | 标识        | 用途                                      |
+| -------- | ----------- | ----------------------------------------- |
 | 用户输入 | `userInput` | 接受用户输入的文本、提示词、文件/URL 路径 |
-| 回答 | `answer` | 工作流暂停，等待用户输入后继续 |
-| AI 输出 | `aiOutput` | 展示最终输出结果 |
+| 回答     | `answer`    | 工作流暂停，等待用户输入后继续            |
+| AI 输出  | `aiOutput`  | 展示最终输出结果                          |
 
 ### 1.2 智能体类
 
-| 节点类型 | 标识 | 用途 |
-|---------|------|------|
-| 智能体 | `agent` | 调用本机 AI CLI 工具（Claude / Codex / DeepSeek）分析和生成，接收上游所有输入 + 全链路累积上下文 |
-| BMad 角色 | `bmadAgent` | 赋予智能体特定角色指令（分析师/架构师/SM 等），**纯 persona 注入，不调用 AI**；BMad 在上游、Agent 在下游，方向已修正 |
-| 代码处理 | `codeAgent` | 用本机 AI CLI 在项目目录直接编码，支持 `analyze`（只读）/ `batch`（按 tasks.md 分批写代码）双模式 |
-| 任务拆解 | `taskPlanner` | 把上游概设输出的 plan 拆解为可独立执行的 batch 任务清单，产出 tasks.md |
-| 自检 Agent | `selfCheck` | 独立会话评审：配置 BMad 角色注入评审身份，材料按 git diff / 上游累积产物自动降级，输出 PASS / CONDITIONAL_PASS / FAIL |
-| 关键词智能体 | `keywordAgent` | 从输入中提取关键词列表，供下游使用 |
+| 节点类型     | 标识           | 用途                                                                                                                  |
+| ------------ | -------------- | --------------------------------------------------------------------------------------------------------------------- |
+| 智能体       | `agent`        | 调用本机 AI CLI 工具（Claude / Codex / DeepSeek）分析和生成，接收上游所有输入 + 全链路累积上下文                      |
+| BMad 角色    | `bmadAgent`    | 赋予智能体特定角色指令（分析师/架构师/SM 等），**纯 persona 注入，不调用 AI**；BMad 在上游、Agent 在下游，方向已修正  |
+| 代码处理     | `codeAgent`    | 用本机 AI CLI 在项目目录直接编码，支持 `analyze`（只读）/ `batch`（按 tasks.md 分批写代码）双模式                     |
+| 任务拆解     | `taskPlanner`  | 把上游概设输出的 plan 拆解为可独立执行的 batch 任务清单，产出 tasks.md                                                |
+| 自检 Agent   | `selfCheck`    | 独立会话评审：配置 BMad 角色注入评审身份，材料按 git diff / 上游累积产物自动降级，输出 PASS / CONDITIONAL_PASS / FAIL |
+| 关键词智能体 | `keywordAgent` | 从输入中提取关键词列表，供下游使用                                                                                    |
 
 > 所有 AI 类节点（agent / codeAgent / taskPlanner / selfCheck / keywordAgent）都不再配置模型，而是在编辑面板中选择**本地工具**，由本机 Runner 调起对应的 AI CLI 无头模式执行。平台不持有任何模型凭据。
 
 ### 1.3 知识库与外部系统
 
-| 节点类型 | 标识 | 用途 |
-|---------|------|------|
-| 知识库检索 | `knowledgeRetrieval` | 双模式：本地模式用本机 AI CLI（经其配置的 MCP）以自然语言查用户自己的知识库，可选挂一个 SKILL 作为查询指令；远程 API 模式编辑请求（URL / 方法 / Headers / Body）直调用户自己的知识库接口 |
-| Lark 文档 | `lark` | 读取/写入/创建飞书文档，通过 lark-cli 操作 |
-| Lark 模板 | `larkTemplate` | 读取飞书文档作为内容模板，传递给下游 |
-| Lark Wiki 遍历 | `larkWikiTraversal` | 遍历飞书知识库节点层级并读取文档内容 |
-| 记忆 | `memory` | 读写持久化记忆文件（markdown 格式），跨工作流传递上下文 |
-| Skill | `skill` | 执行 BMad Skill（分析师/开发者等角色技能） |
+| 节点类型       | 标识                 | 用途                                                                                                                                                                                     |
+| -------------- | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 知识库检索     | `knowledgeRetrieval` | 双模式：本地模式用本机 AI CLI（经其配置的 MCP）以自然语言查用户自己的知识库，可选挂一个 SKILL 作为查询指令；远程 API 模式编辑请求（URL / 方法 / Headers / Body）直调用户自己的知识库接口 |
+| Lark 文档      | `lark`               | 读取/写入/创建飞书文档，通过 lark-cli 操作                                                                                                                                               |
+| Lark 模板      | `larkTemplate`       | 读取飞书文档作为内容模板，传递给下游                                                                                                                                                     |
+| Lark Wiki 遍历 | `larkWikiTraversal`  | 遍历飞书知识库节点层级并读取文档内容                                                                                                                                                     |
+| 记忆           | `memory`             | 读写持久化记忆文件（markdown 格式），跨工作流传递上下文                                                                                                                                  |
+| Skill          | `skill`              | 执行 BMad Skill（分析师/开发者等角色技能）                                                                                                                                               |
 
 ### 1.4 流程控制
 
-| 节点类型 | 标识 | 用途 |
-|---------|------|------|
-| 判断 | `if` / `ifCondition` | 条件分支，按关键词匹配或 AI 判断选择路径 |
-| 循环 | `loop` / `loopCondition` | 循环迭代，支持计数器模式和上游数据驱动模式 |
-| 重试 | `retry` | 捕获上游错误，支持关键词匹配和 AI 判断两种重试条件 |
+| 节点类型 | 标识                     | 用途                                               |
+| -------- | ------------------------ | -------------------------------------------------- |
+| 判断     | `if` / `ifCondition`     | 条件分支，按关键词匹配或 AI 判断选择路径           |
+| 循环     | `loop` / `loopCondition` | 循环迭代，支持计数器模式和上游数据驱动模式         |
+| 重试     | `retry`                  | 捕获上游错误，支持关键词匹配和 AI 判断两种重试条件 |
 
 ---
 
@@ -66,14 +66,14 @@ order: 3
 
 agent 节点把上游内容按优先级拼入 system prompt：
 
-| 优先级 | 内容块 |
-|-------|--------|
-| 10 | 需求分析 |
-| 20 | 指令（角色） |
-| 30 | 关键词 |
-| 40 | 模板 |
-| 50 | 其他内容 |
-| 60 | 知识库检索结果 |
+| 优先级 | 内容块         |
+| ------ | -------------- |
+| 10     | 需求分析       |
+| 20     | 指令（角色）   |
+| 30     | 关键词         |
+| 40     | 模板           |
+| 50     | 其他内容       |
+| 60     | 知识库检索结果 |
 
 - 预算 = `min(tokenMax × 1.2, 150K 字符)`
 - 超预算时按优先级保留高价值块的开头（检索结果块整体靠前），而非整块丢弃
@@ -81,17 +81,17 @@ agent 节点把上游内容按优先级拼入 system prompt：
 
 ### 2.3 按节点类型字段提取（Token 优化）
 
-| 节点类型 | 累积字段 | 丢弃字段 |
-|---------|---------|---------|
-| agent / codeAgent | `response` | model / usage / passThrough |
-| keywordAgent | `keywords` | queries / raw |
-| knowledgeRetrieval | `retrievalContent` | results 数组 / count |
-| userInput | `text` / `prompt` | files / urls |
-| larkTemplate | `templateContent` | templateUrl |
-| lark / larkWikiTraversal | `result` | action / url |
-| memory | `content` | — |
-| bmadAgent | `instructions` | role / agentId |
-| 其他类型 | 内容类字段回退 | 执行元数据 |
+| 节点类型                 | 累积字段           | 丢弃字段                    |
+| ------------------------ | ------------------ | --------------------------- |
+| agent / codeAgent        | `response`         | model / usage / passThrough |
+| keywordAgent             | `keywords`         | queries / raw               |
+| knowledgeRetrieval       | `retrievalContent` | results 数组 / count        |
+| userInput                | `text` / `prompt`  | files / urls                |
+| larkTemplate             | `templateContent`  | templateUrl                 |
+| lark / larkWikiTraversal | `result`           | action / url                |
+| memory                   | `content`          | —                           |
+| bmadAgent                | `instructions`     | role / agentId              |
+| 其他类型                 | 内容类字段回退     | 执行元数据                  |
 
 ---
 
@@ -175,12 +175,12 @@ BMad CLI 把整个 SDLC 固化为交互式会话流程；本项目用可视化 D
 
 ### 角色资产与目录结构
 
-| 路径 | 内容 | 用途 |
-|------|------|------|
-| `.bmad/_bmad/config.toml` | 角色注册表（7 个：analyst / pm / ux-designer / architect / dev+tech-writer / tea） | 角色库数据源，`/api/bmad/agents` 解析 |
-| `.bmad/agents/<id>/SKILL.md` | 清洗后的角色 persona 指令（自包含、无运行时协议） | 注入用，规则页可直接编辑 |
-| `.bmad/agents/<id>/customize.toml` | 官方 persona 源（role / identity / communication_style / principles） | 源参考，清洗时提炼 |
-| `.bmad/plan/` | 官方 plan 技能（PRD / spec / architecture / ux 等）备份 | 暂不接入执行，保留作方法论参考 |
+| 路径                               | 内容                                                                               | 用途                                  |
+| ---------------------------------- | ---------------------------------------------------------------------------------- | ------------------------------------- |
+| `.bmad/_bmad/config.toml`          | 角色注册表（7 个：analyst / pm / ux-designer / architect / dev+tech-writer / tea） | 角色库数据源，`/api/bmad/agents` 解析 |
+| `.bmad/agents/<id>/SKILL.md`       | 清洗后的角色 persona 指令（自包含、无运行时协议）                                  | 注入用，规则页可直接编辑              |
+| `.bmad/agents/<id>/customize.toml` | 官方 persona 源（role / identity / communication_style / principles）              | 源参考，清洗时提炼                    |
+| `.bmad/plan/`                      | 官方 plan 技能（PRD / spec / architecture / ux 等）备份                            | 暂不接入执行，保留作方法论参考        |
 
 ### 为什么要「清洗」
 
@@ -196,13 +196,13 @@ config.toml → /api/bmad/agents（解析角色 + 附 skillContent = SKILL.md �
 
 ### 与 BMad CLI 的取舍
 
-| 维度 | 本项目（persona 注入 + 自建编排） | BMad CLI（完整框架） |
-|------|---------------------------------|----------------------|
-| 编排方式 | 可视化 DAG 自由编排，可组合知识库 / Lark / 记忆 / 条件 / 循环 | 内置固定 SDLC 流程，交互式会话驱动 |
-| 运行时依赖 | 无：只读 `.bmad/` 配置与指令 | 需 install 部署 Core / BMM / TEA / BMB |
-| 角色能力 | 提炼 persona 注入为 system prompt | 完整交互式 Agent |
-| 可调试性 | 单节点执行 / PIN / 日志 / 预算可控 | CLI 交互黑盒 |
-| 维护成本 | 官方更新需手动同步 `.bmad/` 并重新清洗 | 每次 install 自动拉最新 |
+| 维度       | 本项目（persona 注入 + 自建编排）                             | BMad CLI（完整框架）                   |
+| ---------- | ------------------------------------------------------------- | -------------------------------------- |
+| 编排方式   | 可视化 DAG 自由编排，可组合知识库 / Lark / 记忆 / 条件 / 循环 | 内置固定 SDLC 流程，交互式会话驱动     |
+| 运行时依赖 | 无：只读 `.bmad/` 配置与指令                                  | 需 install 部署 Core / BMM / TEA / BMB |
+| 角色能力   | 提炼 persona 注入为 system prompt                             | 完整交互式 Agent                       |
+| 可调试性   | 单节点执行 / PIN / 日志 / 预算可控                            | CLI 交互黑盒                           |
+| 维护成本   | 官方更新需手动同步 `.bmad/` 并重新清洗                        | 每次 install 自动拉最新                |
 
 > 注：`/api/execute/bmad` 为早期「CLI 映射」方案的遗留路由，当前主链路不使用，仅保留兼容。
 
@@ -246,11 +246,11 @@ config.toml → /api/bmad/agents（解析角色 + 附 skillContent = SKILL.md �
 
 ## 十二、进阶主题 FAQ
 
-| 主题 | 说明 |
-|------|------|
-| 如何做多角色评审？ | 创建多个 selfCheck 节点，各配一个 BMad 角色 |
-| 如何让长链路不丢上下文？ | 引擎自动 BFS 累积上游祖先，无需手动补线；预算截断时高优先级块优先保留 |
-| 为什么 codeAgent batch 不落盘？ | 平台只做编排验证，产物通过输出累积给下游，最终由用户自己的 Codex / Trae 执行 |
-| 如何让 AI 节点执行？ | 本机启动 Runner（`npm run runner`），安装 Claude Code / Codex / DeepSeek 任一，在节点编辑面板选「本地工具」 |
-| 平台还需要配置模型吗？ | 不需要。AI 执行全部复用用户本机 CLI，平台不持有任何模型凭据 |
-| 文档如何更新？ | 本指南位于 `docs/` 目录，可直接在「编辑器」页修改，或由工作流生成 |
+| 主题                            | 说明                                                                                                                |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| 如何做多角色评审？              | 创建多个 selfCheck 节点，各配一个 BMad 角色                                                                         |
+| 如何让长链路不丢上下文？        | 引擎自动 BFS 累积上游祖先，无需手动补线；预算截断时高优先级块优先保留                                               |
+| 为什么 codeAgent batch 不落盘？ | 平台只做编排验证，产物通过输出累积给下游，最终由用户自己的 Codex / Trae 执行                                        |
+| 如何让 AI 节点执行？            | 本机启动 Runner（`node runner/server.mjs`），安装 Claude Code / Codex / DeepSeek 任一，在节点编辑面板选「本地工具」 |
+| 平台还需要配置模型吗？          | 不需要。AI 执行全部复用用户本机 CLI，平台不持有任何模型凭据                                                         |
+| 文档如何更新？                  | 本指南位于 `docs/` 目录，可直接在「编辑器」页修改，或由工作流生成                                                   |

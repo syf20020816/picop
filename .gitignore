@@ -17,3 +17,4 @@ todos.json
 model.conf*.json
 assets/*
 **/.dumi
+release

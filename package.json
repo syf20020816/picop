@@ -2,22 +2,21 @@
   "name": "workflow",
   "private": true,
   "type": "module",
+  "main": "electron/main.mjs",
   "imports": {
     "#/*": "./src/*"
   },
   "scripts": {
-    "dev": "NODE_OPTIONS='--max-old-space-size=8192' vite dev --port 3030",
-    "runner": "node runner/server.mjs",
-    "mcp": "node runner/mcp.mjs",
+    "dev": "concurrently -k -n vite,electron -c cyan,magenta \"NODE_OPTIONS='--max-old-space-size=8192' vite dev --port 3030\" \"wait-on tcp:127.0.0.1:3030 && ELECTRON_DEV=1 electron .\"",
+    "dev:all": "concurrently -k -n vite,docs,electron -c cyan,magenta,green \"NODE_OPTIONS='--max-old-space-size=8192' vite dev --port 3030\" \"npm run dev --prefix picop-docs\" \"wait-on tcp:127.0.0.1:3030 && ELECTRON_DEV=1 electron .\"",
+    "dev:web": "concurrently -k -n vite,runner,docs -c cyan,green,magenta \"NODE_OPTIONS='--max-old-space-size=8192' vite dev --port 3030\" \"node runner/server.mjs\" \"npm run dev --prefix picop-docs\"",
     "generate-routes": "tsr generate",
-    "build": "vite build",
-    "preview": "vite preview",
-    "test": "vitest run",
-    "lint": "eslint",
-    "format": "prettier --write . && eslint --fix",
+    "build": "vite build && electron-builder",
+    "start": "electron .",
     "check": "prettier --check .",
-    "doc:dev": "npm run dev --prefix picop-docs",
-    "dev:all": "concurrently -n vite,runner,docs -c cyan,green,magenta \"npm:dev\" \"npm:runner\" \"npm run dev --prefix picop-docs\""
+    "format": "prettier --write . && eslint --fix",
+    "lint": "eslint",
+    "test": "vitest run"
   },
   "dependencies": {
     "@ai-sdk/openai": "^4.0.16",
@@ -64,12 +63,15 @@
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^6.0.1",
     "concurrently": "^10.0.5",
+    "electron": "^44.4.3",
+    "electron-builder": "^26.15.3",
     "eslint": "^9.20.0",
     "jsdom": "^28.1.0",
     "prettier": "^3.8.1",
     "typescript": "^6.0.2",
     "vite": "^8.0.0",
-    "vitest": "^4.1.5"
+    "vitest": "^4.1.5",
+    "wait-on": "^9.1.0"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

@@ -1,0 +1,42 @@
+# electron-builder 打包配置
+#
+# 关键约定：
+#   - asar: false —— SSR 产物（dist/server/server.js）会以原生 ESM import 方式加载
+#     顶层 node_modules 中的外部依赖（react / seroval / h3-v2 等），保留真实文件最稳。
+#   - 打包后 APP_ROOT = resources/app，数据目录切到 userData/data（见 electron/paths.mjs 播种逻辑）。
+
+appId: com.picop.workflow
+productName: Picop
+
+directories:
+  output: release
+  buildResources: build
+
+asar: false
+
+files:
+  - electron/**/*
+  - dist/**/*
+  - runner/**/*
+  - shared/**/*
+  - prompts/**/*
+  - workflows/**/*
+  - memory/**/*
+  - .bmad/**/*
+  - .skills/**/*
+  - .lark/**/*
+  - package.json
+
+mac:
+  target:
+    - dmg
+  category: public.app-category.developer-tools
+
+win:
+  target:
+    - nsis
+
+linux:
+  target:
+    - AppImage
+  category: Development

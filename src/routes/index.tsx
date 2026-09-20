@@ -106,9 +106,9 @@ function App() {
             onClick={() => setCollapsed(!collapsed)}
           >
             {collapsed ? (
-              <PanelLeftOpen size={16} />
+              <PanelLeftOpen color="white" size={16} />
             ) : (
-              <PanelLeftClose size={16} />
+              <PanelLeftClose color="white" size={16} />
             )}
           </div>
         </Sider>
