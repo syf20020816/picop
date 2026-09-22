@@ -54,19 +54,27 @@ export const AddNodeBtn = ({
   const currentNode = useNodeStore((state) => state.currentNode)
   const addConnectNode = useNodeStore((state) => state.addConnectNode)
   const addUnConnectNode = useNodeStore((state) => state.addUnConnectNode)
-
-  const pos = currentNode
-    ? {
-        x: currentNode.positionAbsoluteX,
-        y: currentNode.positionAbsoluteY,
-      }
-    : { x: 0, y: 0 }
+  const addPos = useNodeStore((state) => state.addPos)
+  const clearAddPos = useNodeStore((state) => state.clearAddPos)
 
   const addNode = (builderFn: (pos: { x: number; y: number }) => AppNode) => {
+    // 右键空白画布创建的节点落在右键位置；否则锚定当前节点（或 0,0）
+    const pos = addPos
+      ? { x: addPos.x, y: addPos.y }
+      : currentNode
+        ? {
+            x: currentNode.positionAbsoluteX,
+            y: currentNode.positionAbsoluteY,
+          }
+        : { x: 0, y: 0 }
     const node = builderFn(pos)
 
     if (!node) {
       return
+    }
+
+    if (addPos) {
+      clearAddPos()
     }
 
     if (!kind) {
@@ -83,9 +91,7 @@ export const AddNodeBtn = ({
       type: 'group',
       children: [
         {
-          label: (
-            <NodeHeader kind={NodeTypes.USER_INPUT} title="输入节点" />
-          ),
+          label: <NodeHeader kind={NodeTypes.USER_INPUT} title="输入节点" />,
           key: NodeTypes.USER_INPUT,
           disabled: isDisabledNode(kind, NodeTypes.USER_INPUT),
           onClick: () => addNode(NodeBuilder.userInput),

@@ -25,7 +25,9 @@
 ```
 
 - **`workflow_build`** — 把用户自然语言描述的流程交给本机 AI CLI（Claude Code / Codex / DeepSeek）转换为工作流定义 JSON（复用 `prompts/flowBuilder.md`；入参 `description` / `tool` / `timeoutMs`）
-- **`workflow_export`** — 把工作流定义导出为 4 种产物之一并写入用户项目，与画布导出结构一致（入参 `workflow` / `name` / `targetDir` / `format`）：
+- **`workflow_export`** — 把工作流定义全量导出为目录文件并写入用户项目：主工作流文件 + 各节点引用的输入物（userInput 静态内容 / Skill / Memory / BMad / Lark URL 清单 + lark-cli 技能）+ manifest.json（与画布 zip 同源，非 zip；入参 `workflow` / `name` / `targetDir` / `format` / `full`，`full` 缺省 true）：
+- **`workflow_save`** — 把工作流定义保存到 Picop 工作流模板库（与画布「保存工作流模板」共享同一存储，保存后可回画布加载/续编；入参 `workflow` / `name` / `description`）
+- **`workflow_list`** — 列出 Picop 已保存的工作流模板（仅名称 + 描述）
 
 | format            | 产物路径                                         | 适用场景                                             |
 | ----------------- | ------------------------------------------------ | ---------------------------------------------------- |
@@ -65,7 +67,7 @@ claude mcp add picop -- node <ai-workflow>/runner/mcp.mjs
 
 > Runner 由 App 主进程自动拉起，**保持 Picop 运行**即可（退出 App 会一并停掉 Runner）；`find ~` 搜不到 `/Applications`，形态 B 直接用上面的固定路径。
 
-平台分发技能 [`.skills/picop-mcp/SKILL.md`](.skills/picop-mcp/SKILL.md) 指导工具里的 AI 完成「build → export → 汇报」三步（含路径定位、4 种格式选型、输出物校验）。四零原则全程保持：MCP server 跑在用户本机、无外部依赖，不存数据、不持凭据、不跑运行时，产物只写入用户指定的项目目录。
+平台分发技能 [`.skills/picop-mcp/SKILL.md`](.skills/picop-mcp/SKILL.md) 指导工具里的 AI 完成「build → export（或 save）→ 汇报」三步（含路径定位、4 种格式选型、输出物校验），并支持 `-s`/`--save`（保存到 Picop）与 `-l`/`--list`（列出已保存工作流）两个调用参数。四零原则全程保持：MCP server 跑在用户本机、无外部依赖，不存数据、不持凭据、不跑运行时，产物只写入用户指定的项目目录。
 
 画布与 MCP 互为补充：MCP 提供零成本入口，画布负责可视化验证与微调（同一工作流 JSON 可导入回画布）。
 

@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from 'react'
-import { ReactFlow, Background, MiniMap } from '@xyflow/react'
+import { ReactFlow, Background, MiniMap, useReactFlow } from '@xyflow/react'
 import { Controls } from './controls'
 
 import { UserInputNode } from './node/user/input'
@@ -89,6 +89,9 @@ export function Flow() {
   const onConnect = useNodeStore((s) => s.onConnect)
   const removeConnectedBmad = useNodeStore((s) => s.removeConnectedBmad)
   const setCurrentNode = useNodeStore((s) => s.setCurrentNode)
+  const setAddPos = useNodeStore((s) => s.setAddPos)
+  const clearAddPos = useNodeStore((s) => s.clearAddPos)
+  const { screenToFlowPosition } = useReactFlow()
 
   // 监听 BMad 断开事件
   useEffect(() => {
@@ -115,7 +118,10 @@ export function Flow() {
   const panels = useMemo(
     () => (
       <>
-        <SenderPanel position="bottom-center" style={{ left: '40%' }}></SenderPanel>
+        <SenderPanel
+          position="bottom-center"
+          style={{ left: '40%' }}
+        ></SenderPanel>
         <StepLinePanel position="center-left"></StepLinePanel>
         <GroupPanel position="top-center"></GroupPanel>
         <Controls position="bottom-left"></Controls>
@@ -140,6 +146,12 @@ export function Flow() {
         edgeTypes={EDGE_TYPES}
         deleteKeyCode="Delete"
         proOptions={{ hideAttribution: true }}
+        // 右键空白画布：记录右键位置的工作流坐标，供右键菜单创建节点时落位
+        onPaneContextMenu={(e) =>
+          setAddPos(screenToFlowPosition({ x: e.clientX, y: e.clientY }))
+        }
+        // 右键节点：清空待落位点，创建仍锚定到当前节点位置
+        onNodeContextMenu={() => clearAddPos()}
       >
         <Background />
         <MiniMap

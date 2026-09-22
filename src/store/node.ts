@@ -76,9 +76,7 @@ async function saveExecutionHistory(
 }
 
 /** 读取断点续跑状态（仅 globalStatus === 'paused' 时返回有效状态，P0-5） */
-async function loadExecState(
-  workflowId: string,
-): Promise<{
+async function loadExecState(workflowId: string): Promise<{
   nodeOutputs: Record<string, Record<string, any>>
   nodeStatuses: Record<string, any>
 } | null> {
@@ -117,6 +115,12 @@ export interface UseNodeStoreProps {
   deleteCurrentNode: () => void
   /** 使用 immer producer 直接修改当前节点的深层字段 */
   patchCurrentNode: (recipe: (draft: NonNullable<AppNode>) => void) => void
+  /** 右键空白画布时待落位的工作流坐标点（右键菜单创建节点用，一次性消费后清除） */
+  addPos: { x: number; y: number } | null
+  /** 记录右键空白处的工作流坐标（由 React Flow onPaneContextMenu 写入） */
+  setAddPos: (pos: { x: number; y: number }) => void
+  /** 清除待落位点（节点右键 / 已消费后调用） */
+  clearAddPos: () => void
   nodes: Node[]
   edges: Edge[]
   onNodesChange: (changes: NodeChange<Node>[]) => void
@@ -139,10 +143,7 @@ export interface UseNodeStoreProps {
   /** 删除当前 AgentNode 连线的 BMadNode */
   removeConnectedBmad: () => void
   /** 为当前输入节点创建/更新一个相连的 SKILL 节点（技能联动） */
-  syncSkillForCurrent: (skill: {
-    id?: string
-    name?: string
-  }) => void
+  syncSkillForCurrent: (skill: { id?: string; name?: string }) => void
 
   // ---- 执行引擎集成 ----
   /** 执行管线上下文 */
@@ -207,6 +208,7 @@ export const useNodeStore = create<UseNodeStoreProps>((set, get) => ({
       edges: [],
       workflowId: `workflow_${Date.now()}`,
       currentNode: null,
+      addPos: null,
       pinnedNodes: {},
       pipelineContext: createPipelineContext(),
     })
@@ -217,6 +219,10 @@ export const useNodeStore = create<UseNodeStoreProps>((set, get) => ({
     })
   },
   currentNode: null,
+  // 右键空白画布创建节点时的待落位点（onPaneContextMenu 写入，创建后消费清除）
+  addPos: null,
+  setAddPos: (pos) => set({ addPos: pos }),
+  clearAddPos: () => set({ addPos: null }),
   // 删除当前节点，并从edges中和nodes删除
   deleteCurrentNode: () => {
     const current = get().currentNode
@@ -550,7 +556,10 @@ export const useNodeStore = create<UseNodeStoreProps>((set, get) => ({
       upstreams.push({
         nodeId: ancId,
         nodeType: ancNode.type || '',
-        title: (ancNode.data as { title?: string } | undefined)?.title || ancNode.type || '',
+        title:
+          (ancNode.data as { title?: string } | undefined)?.title ||
+          ancNode.type ||
+          '',
         ...extractAccumulated(ancNode.type || '', ancOutput),
       })
     }
@@ -560,7 +569,14 @@ export const useNodeStore = create<UseNodeStoreProps>((set, get) => ({
     await fetch('/api/workflow/pin', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nodeType, nodeId, title, output, workflowId, context }),
+      body: JSON.stringify({
+        nodeType,
+        nodeId,
+        title,
+        output,
+        workflowId,
+        context,
+      }),
     })
 
     // 更新内存缓存（按 nodeId 隔离，只影响当前节点）
@@ -590,7 +606,11 @@ export const useNodeStore = create<UseNodeStoreProps>((set, get) => ({
     delete updated[nodeId]
     set({ pinnedNodes: updated })
   },
-  deletePinnedFile: async (nodeType: string, nodeId?: string, workflowId?: string) => {
+  deletePinnedFile: async (
+    nodeType: string,
+    nodeId?: string,
+    workflowId?: string,
+  ) => {
     // 持久化删除文件（带 nodeId 只删该节点的文件，否则删除该类型所有文件；
     // 带 workflowId 只删该工作流下的文件，避免误删其他工作流同名 nodeId 的 PIN）
     const params = new URLSearchParams({ nodeType })
@@ -649,7 +669,12 @@ export const useNodeStore = create<UseNodeStoreProps>((set, get) => ({
       },
     )
     // 执行结束后保存历史
-    await saveExecutionHistory(workflowId, workflowName, pipelineCtx, globalMode)
+    await saveExecutionHistory(
+      workflowId,
+      workflowName,
+      pipelineCtx,
+      globalMode,
+    )
   },
   runAll: async () => {
     const { nodes, edges, workflowId } = get()
@@ -674,7 +699,12 @@ export const useNodeStore = create<UseNodeStoreProps>((set, get) => ({
       },
     )
     // 执行结束后保存历史
-    await saveExecutionHistory(workflowId, workflowName, pipelineCtx, globalMode)
+    await saveExecutionHistory(
+      workflowId,
+      workflowName,
+      pipelineCtx,
+      globalMode,
+    )
   },
   runFrom: async (nodeId: string) => {
     const { nodes, edges, workflowId } = get()
@@ -697,7 +727,12 @@ export const useNodeStore = create<UseNodeStoreProps>((set, get) => ({
         ...(restored ? { restoreState: restored } : {}),
       },
     )
-    await saveExecutionHistory(workflowId, workflowName, pipelineCtx, globalMode)
+    await saveExecutionHistory(
+      workflowId,
+      workflowName,
+      pipelineCtx,
+      globalMode,
+    )
   },
   resumeFrom: async (nodeId: string, reply: string) => {
     const { nodes, edges, pipelineContext, workflowId } = get()

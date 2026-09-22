@@ -30,7 +30,8 @@ import path from 'node:path'
 const PORT = Number(process.env.RUNNER_PORT || 7523)
 const HOST = process.env.RUNNER_HOST || '127.0.0.1'
 const MODEL_CONF =
-  process.env.RUNNER_MODEL_CONF || path.resolve(process.cwd(), 'model.conf.json')
+  process.env.RUNNER_MODEL_CONF ||
+  path.resolve(process.cwd(), 'model.conf.json')
 const VERSION = '0.1.0'
 
 // === CORS / Origin 校验 ===
@@ -38,7 +39,8 @@ const VERSION = '0.1.0'
 /** 判断 Origin 是否在白名单内（无 Origin 的请求视为本机脚本/curl，放行） */
 function isOriginAllowed(origin) {
   if (!origin) return true
-  if (/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(origin)) return true
+  if (/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(origin))
+    return true
   const extras = (process.env.RUNNER_ALLOWED_ORIGINS || '')
     .split(',')
     .map((s) => s.trim())
@@ -94,10 +96,16 @@ function extractBaseUrl(rawUrl) {
  * 调用 OpenAI 兼容的 Chat Completions 接口（纯 fetch，不依赖 AI SDK）
  * 与 src/services/ai.ts 的 callAI 行为对齐：URL 归一化、本地 Ollama 注入 num_ctx
  */
-async function callAI({ model, systemPrompt, messages = [], temperature = 0.3 }) {
+async function callAI({
+  model,
+  systemPrompt,
+  messages = [],
+  temperature = 0.3,
+}) {
   const baseUrl = extractBaseUrl(model.url)
   const isLocalOllama =
-    String(model.url).includes('localhost') || String(model.url).includes('127.0.0.1')
+    String(model.url).includes('localhost') ||
+    String(model.url).includes('127.0.0.1')
 
   const body = {
     model: model.modelName,
@@ -260,7 +268,10 @@ const CLI_TOOLS = [
         if (!t) continue
         try {
           const ev = JSON.parse(t)
-          if (ev.type === 'item.completed' && ev.item?.type === 'agent_message') {
+          if (
+            ev.type === 'item.completed' &&
+            ev.item?.type === 'agent_message'
+          ) {
             response = ev.item.text || ''
           }
         } catch {
@@ -285,7 +296,8 @@ const CLI_TOOLS = [
       try {
         const j = JSON.parse(stdout)
         // summary JSON 字段名做多层兜底
-        const text = j.response ?? j.result ?? j.message ?? j.text ?? j.content ?? ''
+        const text =
+          j.response ?? j.result ?? j.message ?? j.text ?? j.content ?? ''
         return {
           response: String(text),
           meta: j.session_id ? { sessionId: j.session_id } : undefined,
@@ -350,7 +362,8 @@ function parseSkillFrontMatter(content) {
 /** 扫描某工具本机 skills 目录，返回 [{ id, name, description }] */
 function scanToolSkills(toolId) {
   const tool = CLI_TOOLS.find((t) => t.id === toolId)
-  if (!tool) return { error: `未知工具: ${toolId}`, skills: [], supported: false }
+  if (!tool)
+    return { error: `未知工具: ${toolId}`, skills: [], supported: false }
 
   const skills = []
   const seen = new Set()
@@ -401,6 +414,75 @@ function readToolSkillContent(toolId, skillName) {
     if (fs.existsSync(fp)) return fs.readFileSync(fp, 'utf-8')
   }
   return null
+}
+
+// === 工作流模板存储（与画布 /api/workflows 共用同一目录契约） ===
+
+const WORKFLOWS_DIR = path.resolve(process.cwd(), 'workflows')
+const WORKFLOW_VERSIONS_DIR = path.join(WORKFLOWS_DIR, '.versions')
+
+/** 落盘前剥离节点 modal 敏感字段（只保留模型引用，与 src/services/modal.ts stripModal 一致） */
+function stripModal(modal) {
+  if (!modal || typeof modal !== 'object') return modal
+  const stripped = {}
+  if (modal.id) stripped.id = modal.id
+  else if (modal.name) stripped.name = modal.name // 兼容旧格式（无 id 时以 modelName 作引用）
+  if (modal.alias) stripped.alias = modal.alias
+  return Object.keys(stripped).length > 0 ? stripped : undefined
+}
+
+/** 剥离单个节点的 modal（避免 API Key / URL / Token 落盘） */
+function stripNodeModal(node) {
+  if (!node?.data?.modal) return node
+  return { ...node, data: { ...node.data, modal: stripModal(node.data.modal) } }
+}
+
+function stripNodesModals(nodes) {
+  return Array.isArray(nodes) ? nodes.map(stripNodeModal) : nodes
+}
+
+/** 读取单个工作流文件的元信息（含 description） */
+function readWorkflowMeta(file) {
+  const fileId = String(file).replace(/\.json$/, '')
+  let content
+  try {
+    content = JSON.parse(
+      fs.readFileSync(path.join(WORKFLOWS_DIR, file), 'utf-8'),
+    )
+  } catch {
+    return null
+  }
+  return {
+    id: fileId,
+    name: content.name || fileId,
+    description: content.description || '',
+    createdAt: content.createdAt || '',
+    updatedAt: content.updatedAt || '',
+    nodeCount: content.nodes?.length || 0,
+    edgeCount: content.edges?.length || 0,
+  }
+}
+
+/** 已存在同名工作流时先保存版本快照（快照同样只存模型引用） */
+function saveWorkflowSnapshot(id, existing) {
+  try {
+    const dir = path.join(WORKFLOW_VERSIONS_DIR, id)
+    fs.mkdirSync(dir, { recursive: true })
+    const snapshot = {
+      name: existing.name,
+      id: existing.id,
+      nodes: stripNodesModals(existing.nodes || []),
+      edges: existing.edges,
+      savedAt: new Date().toISOString(),
+      versionId: `v-${Date.now()}`,
+    }
+    fs.writeFileSync(
+      path.join(dir, `${snapshot.versionId}.json`),
+      JSON.stringify(snapshot, null, 2),
+    )
+  } catch {
+    // 版本快照保存失败不影响本次保存
+  }
 }
 
 // === 异步任务队列（CLI agent 一跑几分钟，不能同步等待）===
@@ -531,8 +613,14 @@ function startCliTask({ tool: toolId, prompt, auto, timeoutMs, cwd, gitDiff }) {
     }
     try {
       const parsed = tool.parse(stdout)
-      task.output = { response: parsed.response, tool: tool.id, meta: parsed.meta }
-      task.logs.push(`${tool.name} 执行完成 (${parsed.response?.length || 0} 字符)`)
+      task.output = {
+        response: parsed.response,
+        tool: tool.id,
+        meta: parsed.meta,
+      }
+      task.logs.push(
+        `${tool.name} 执行完成 (${parsed.response?.length || 0} 字符)`,
+      )
       task.status = 'done'
     } catch (err) {
       task.status = 'error'
@@ -562,7 +650,10 @@ function readBody(req) {
 }
 
 function json(res, req, statusCode, payload) {
-  res.writeHead(statusCode, { 'Content-Type': 'application/json', ...corsHeaders(req) })
+  res.writeHead(statusCode, {
+    'Content-Type': 'application/json',
+    ...corsHeaders(req),
+  })
   res.end(JSON.stringify(payload))
 }
 
@@ -577,7 +668,10 @@ function isValidHttpUrl(raw) {
 }
 
 const server = http.createServer(async (req, res) => {
-  const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`)
+  const parsedUrl = new URL(
+    req.url,
+    `http://${req.headers.host || 'localhost'}`,
+  )
   const pathname = parsedUrl.pathname
 
   // CORS 预检
@@ -589,14 +683,21 @@ const server = http.createServer(async (req, res) => {
 
   // Origin 不在白名单内：直接拒绝，防止任意网页指挥本地 Runner
   if (!isOriginAllowed(req.headers.origin)) {
-    json(res, req, 403, { status: 'error', output: {}, error: 'Origin 不在白名单内' })
+    json(res, req, 403, {
+      status: 'error',
+      output: {},
+      error: 'Origin 不在白名单内',
+    })
     return
   }
 
   try {
     // 心跳探测
     if (req.method === 'GET' && pathname === '/ping') {
-      json(res, req, 200, { status: 'success', output: { online: true, version: VERSION } })
+      json(res, req, 200, {
+        status: 'success',
+        output: { online: true, version: VERSION },
+      })
       return
     }
 
@@ -666,7 +767,9 @@ const server = http.createServer(async (req, res) => {
 
       let model = body.model
       if (body.modelId) {
-        const found = readModels().find((m) => m.id === body.modelId || m.name === body.modelId)
+        const found = readModels().find(
+          (m) => m.id === body.modelId || m.name === body.modelId,
+        )
         if (found) {
           model = found
           logs.push(`通过 modelId 解析模型: ${found.name}`)
@@ -695,10 +798,16 @@ const server = http.createServer(async (req, res) => {
           messages: body.messages,
           temperature: body.temperature ?? 0.3,
         })
-        logs.push(`AI 响应完成 (tokens: ${result.usage?.totalTokens || 'unknown'})`)
+        logs.push(
+          `AI 响应完成 (tokens: ${result.usage?.totalTokens || 'unknown'})`,
+        )
         json(res, req, 200, {
           status: 'success',
-          output: { response: result.text, model: model.modelName, usage: result.usage },
+          output: {
+            response: result.text,
+            model: model.modelName,
+            usage: result.usage,
+          },
           logs,
         })
       } catch (err) {
@@ -729,7 +838,10 @@ const server = http.createServer(async (req, res) => {
       const result = scanToolSkills(tool)
       json(res, req, 200, {
         status: result.error ? 'error' : 'success',
-        output: { skills: result.skills || [], supported: result.supported ?? false },
+        output: {
+          skills: result.skills || [],
+          supported: result.supported ?? false,
+        },
         ...(result.error ? { error: result.error } : {}),
       })
       return
@@ -741,8 +853,86 @@ const server = http.createServer(async (req, res) => {
         parsedUrl.searchParams.get('tool'),
         parsedUrl.searchParams.get('skill'),
       )
-      json(res, req, 200, { status: 'success', output: { content: content || '' } })
+      json(res, req, 200, {
+        status: 'success',
+        output: { content: content || '' },
+      })
       return
+    }
+
+    // 工作流模板存储（列表 / 保存；与画布 /api/workflows 共用同一目录，保存后可回画布加载）
+    if (pathname === '/workflows') {
+      if (req.method === 'GET') {
+        try {
+          fs.mkdirSync(WORKFLOWS_DIR, { recursive: true })
+          const files = fs
+            .readdirSync(WORKFLOWS_DIR)
+            .filter((f) => f.endsWith('.json'))
+          const workflows = files
+            .map(readWorkflowMeta)
+            .filter(Boolean)
+            .sort((a, b) =>
+              (b.updatedAt || b.createdAt || '').localeCompare(
+                a.updatedAt || a.createdAt || '',
+              ),
+            )
+          json(res, req, 200, { status: 'success', output: { workflows } })
+        } catch (err) {
+          json(res, req, 200, {
+            status: 'error',
+            output: {},
+            error: `读取工作流列表失败: ${err.message}`,
+          })
+        }
+        return
+      }
+      if (req.method === 'POST') {
+        const body = JSON.parse((await readBody(req)) || '{}')
+        const { name, nodes, edges } = body
+        if (
+          !name ||
+          !String(name).trim() ||
+          !Array.isArray(nodes) ||
+          !Array.isArray(edges)
+        ) {
+          json(res, req, 200, {
+            status: 'error',
+            output: {},
+            error: '缺少 name / nodes / edges（edges 需为数组）',
+          })
+          return
+        }
+        const now = new Date().toISOString()
+        const id = String(name).replace(/[^a-zA-Z0-9\u4e00-\u9fa5_-]/g, '_')
+        const workflowFile = path.join(WORKFLOWS_DIR, `${id}.json`)
+        fs.mkdirSync(WORKFLOWS_DIR, { recursive: true })
+
+        if (fs.existsSync(workflowFile)) {
+          try {
+            const existing = JSON.parse(fs.readFileSync(workflowFile, 'utf-8'))
+            saveWorkflowSnapshot(id, existing)
+          } catch {
+            // 文件损坏等，跳过快照
+          }
+        }
+
+        const workflow = {
+          name: String(name).trim(),
+          id,
+          description:
+            typeof body.description === 'string' ? body.description : '',
+          nodes: stripNodesModals(nodes),
+          edges,
+          createdAt: now,
+          updatedAt: now,
+        }
+        fs.writeFileSync(workflowFile, JSON.stringify(workflow, null, 2))
+        json(res, req, 201, {
+          status: 'success',
+          output: { id, name: workflow.name, success: true },
+        })
+        return
+      }
     }
 
     // AI 输出落盘（用户配置的输出路径，写入用户本机磁盘）
@@ -750,7 +940,11 @@ const server = http.createServer(async (req, res) => {
       const body = JSON.parse((await readBody(req)) || '{}')
       const { filePath, content } = body
       if (!filePath) {
-        json(res, req, 200, { status: 'error', output: {}, error: '缺少 filePath' })
+        json(res, req, 200, {
+          status: 'error',
+          output: {},
+          error: '缺少 filePath',
+        })
         return
       }
       try {
@@ -793,13 +987,18 @@ const server = http.createServer(async (req, res) => {
         const res = await fetch(url, {
           method,
           headers: headerObj,
-          body: method === 'GET' || method === 'HEAD' ? undefined : (rawBody || undefined),
+          body:
+            method === 'GET' || method === 'HEAD'
+              ? undefined
+              : rawBody || undefined,
           signal: controller.signal,
         })
         clearTimeout(timer)
 
         const text = await res.text()
-        logs.push(`响应状态: ${res.status} ${res.statusText} (${text.length} 字符)`)
+        logs.push(
+          `响应状态: ${res.status} ${res.statusText} (${text.length} 字符)`,
+        )
 
         let parsedJson = null
         try {
@@ -836,9 +1035,17 @@ const server = http.createServer(async (req, res) => {
       const body = JSON.parse((await readBody(req)) || '{}')
       const started = startCliTask(body)
       if (started.error) {
-        json(res, req, 200, { status: 'error', output: {}, logs: [], error: started.error })
+        json(res, req, 200, {
+          status: 'error',
+          output: {},
+          logs: [],
+          error: started.error,
+        })
       } else {
-        json(res, req, 200, { status: 'success', output: { taskId: started.taskId } })
+        json(res, req, 200, {
+          status: 'success',
+          output: { taskId: started.taskId },
+        })
       }
       return
     }
@@ -848,7 +1055,11 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && taskMatch) {
       const task = tasks.get(taskMatch[1])
       if (!task) {
-        json(res, req, 404, { status: 'error', output: {}, error: '任务不存在' })
+        json(res, req, 404, {
+          status: 'error',
+          output: {},
+          error: '任务不存在',
+        })
         return
       }
       json(res, req, 200, {
@@ -858,7 +1069,11 @@ const server = http.createServer(async (req, res) => {
       return
     }
 
-    json(res, req, 404, { status: 'error', output: {}, error: `未知路径: ${pathname}` })
+    json(res, req, 404, {
+      status: 'error',
+      output: {},
+      error: `未知路径: ${pathname}`,
+    })
   } catch (err) {
     json(res, req, 500, { status: 'error', output: {}, error: err.message })
   }

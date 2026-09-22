@@ -4,8 +4,10 @@
  *
  * 让用户在自己工具（Claude Code / Codex / Trae 等）中通过 MCP 直连 Picop 能力：
  *   - workflow_build：自然语言 → 工作流定义（复用 prompts/flowBuilder.md + Runner /agent-cli）
- *   - workflow_export：工作流定义 → workflow.yml / schema.yaml / SKILL.md
- *     （与画布导出共用 shared/export-core.mjs，产物完全一致；经 Runner /file-write 落盘到用户项目）
+ *   - workflow_export：工作流定义 → 全量导出为目录文件（主文件 + 输入物 + manifest，
+ *     与画布 zip 同源 shared/artifact-collect.mjs，非 zip；经 Runner /file-write 落盘到用户项目）
+ *   - workflow_save：工作流定义 → 保存到 Picop 工作流模板库（与画布「保存」共享同一存储）
+ *   - workflow_list：列出 Picop 已保存工作流（名称 + 描述）
  *
  * 用户侧注册示例（Claude Code，源码运行形态）：
  *   claude mcp add picop -- node <ai-workflow>/runner/mcp.mjs
@@ -31,7 +33,11 @@ import fs from 'node:fs'
 import path from 'node:path'
 import readline from 'node:readline'
 import { fileURLToPath } from 'node:url'
-import { NodeTypes, buildWorkflow } from '../shared/export-core.mjs'
+import {
+  NodeTypes,
+  buildWorkflow,
+  autoSkillDescription,
+} from '../shared/export-core.mjs'
 
 const PROTOCOL_VERSION = '2024-11-05'
 const RUNNER_URL = process.env.RUNNER_URL || 'http://127.0.0.1:7523'
@@ -144,26 +150,22 @@ function safeResolve(targetDir) {
   return path.resolve(raw)
 }
 
-async function exportWorkflow({
-  workflow,
-  format = 'speckit',
-  name,
-  targetDir,
-  description,
-}) {
+/**
+ * 归一化工作流定义（build / save / export 共用）：
+ * 补 id / position / data（AI 生成的节点可能缺字段），校验类型，
+ * flowBuilder 把标题放在顶层 title、data 内不含 title，这里归位到 data.title 以对齐画布节点结构，
+ * 并把 edges 的 nodes 数组下标引用修复为节点 id 引用。
+ */
+function normalizeWorkflow(def) {
   // workflow 允许是对象或 JSON 字符串
-  let def = workflow
-  if (typeof workflow === 'string') def = JSON.parse(workflow)
+  if (typeof def === 'string') def = JSON.parse(def)
   if (!def || !Array.isArray(def.nodes)) {
     throw new Error('workflow 参数必须是 { nodes, edges } 结构')
   }
   const rawNodes = def.nodes
   const rawEdges = Array.isArray(def.edges) ? def.edges : []
-  if (!name || !String(name).trim()) throw new Error('缺少 name（工作流名称）')
-  if (rawNodes.length === 0) throw new Error('工作流没有节点，无法导出')
+  if (rawNodes.length === 0) throw new Error('工作流没有节点')
 
-  // 节点归一化：补 id / position / data（AI 生成的节点可能缺字段），并校验类型
-  // flowBuilder 把标题放在顶层 title、data 内不含 title，这里归位到 data.title 以对齐画布节点结构
   const nodes = rawNodes.map((n, i) => {
     if (!n || typeof n.type !== 'string')
       throw new Error(`第 ${i + 1} 个节点缺少 type`)
@@ -181,7 +183,6 @@ async function exportWorkflow({
     }
   })
 
-  // 连线归一化：flowBuilder 的 edges 用 nodes 数组下标，而画布导出核心要求 source/target 引用节点 id
   const nodeIds = new Set(nodes.map((n) => n.id))
   const edges = rawEdges
     .map((e) => {
@@ -192,6 +193,20 @@ async function exportWorkflow({
       return { ...e, source, target, id: e.id || `${source}-${target}` }
     })
     .filter((e) => nodeIds.has(e.source) && nodeIds.has(e.target))
+
+  return { nodes, edges }
+}
+
+async function exportWorkflow({
+  workflow,
+  format = 'speckit',
+  name,
+  targetDir,
+  description,
+  full = true,
+}) {
+  if (!name || !String(name).trim()) throw new Error('缺少 name（工作流名称）')
+  const { nodes, edges } = normalizeWorkflow(workflow)
 
   const fmt = String(format)
   if (!['speckit', 'openspec', 'spec', 'skill'].includes(fmt)) {
@@ -207,23 +222,117 @@ async function exportWorkflow({
   })
 
   const baseDir = safeResolve(targetDir)
-  const full = path.join(baseDir, workflowPath)
-  if (!full.startsWith(baseDir + path.sep)) {
-    throw new Error(`导出路径越界: ${workflowPath}`)
+  const files = []
+  const logs = []
+
+  /** 相对 targetDir 落盘单个文件（路径穿越防护） */
+  const writeFile = async (relPath, content) => {
+    const filePath = path.join(baseDir, relPath)
+    if (!filePath.startsWith(baseDir + path.sep)) {
+      throw new Error(`导出路径越界: ${relPath}`)
+    }
+    const r = await runnerJson('/file-write', {
+      method: 'POST',
+      body: { filePath, content },
+    })
+    if (r.status !== 'success')
+      throw new Error(r.error || `文件写入失败: ${relPath}`)
+    files.push(filePath)
   }
-  const r = await runnerJson('/file-write', {
-    method: 'POST',
-    body: { filePath: full, content: yaml },
-  })
-  if (r.status !== 'success')
-    throw new Error(r.error || `文件写入失败: ${workflowPath}`)
+
+  // 1. 主工作流文件
+  await writeFile(workflowPath, yaml)
+  logs.push(`已生成 ${workflowPath}`)
+
+  // 2. 全量导出：与画布 zip 同源（shared/artifact-collect.mjs），
+  //    输入物 + openspec 附加文件 + manifest 全部落盘为真实目录文件（非 zip）
+  if (full) {
+    const { collectArtifacts, openSpecSchemaDir, specChangeDir, skillDir } =
+      await import('../shared/artifact-collect.mjs')
+
+    const collected = await collectArtifacts(nodes, { baseDir: PICOP_DIR })
+
+    // OpenSpec：输入物与 schema.yaml 同级；Spec：变更目录下；Skill：与 SKILL.md 同级；Speckit：保持导出根目录
+    const workflowName = String(name).trim()
+    const prefix =
+      fmt === 'openspec'
+        ? `${openSpecSchemaDir(workflowName)}/`
+        : fmt === 'spec'
+          ? `${specChangeDir(workflowName)}/`
+          : fmt === 'skill'
+            ? `${skillDir(workflowName)}/`
+            : ''
+
+    for (const item of collected) {
+      await writeFile(prefix + item.path, item.content)
+      if (item.warning) logs.push(`警告: ${item.warning}`)
+    }
+
+    // OpenSpec 附加文件：config.yaml（默认 schema）+ changes/archive/ 目录
+    if (fmt === 'openspec') {
+      const schemaName = prefix.split('/').filter(Boolean).pop() || workflowName
+      await writeFile('openspec/config.yaml', `schema: ${schemaName}\n`)
+      await writeFile('openspec/changes/archive/.gitkeep', '')
+      logs.push('已生成 openspec/config.yaml')
+    }
+
+    // manifest
+    const manifest = {
+      name: workflowName,
+      target: fmt,
+      workflowPath,
+      artifactCount: collected.length,
+      collectedSources: collected.map((c) => c.source),
+      logs,
+    }
+    await writeFile('manifest.json', JSON.stringify(manifest, null, 2))
+  }
 
   return {
     format: fmt,
-    files: [full],
+    full: Boolean(full),
+    files,
     workflowPath,
     nodes: nodes.length,
     edges: edges.length,
+    logs,
+  }
+}
+
+// === 工具 3：workflow_save / 工具 4：workflow_list ===
+
+/** 保存到 Picop 工作流模板库（与画布「保存工作流模板」共用同一存储） */
+async function saveWorkflow({ workflow, name, description }) {
+  if (!name || !String(name).trim()) throw new Error('缺少 name（工作流名称）')
+  const { nodes, edges } = normalizeWorkflow(workflow)
+  const desc =
+    String(description || '').trim() ||
+    autoSkillDescription(String(name).trim(), nodes)
+  const r = await runnerJson('/workflows', {
+    method: 'POST',
+    body: {
+      name: String(name).trim(),
+      description: desc,
+      nodes,
+      edges,
+    },
+  })
+  if (r.status !== 'success') throw new Error(r.error || '保存到 Picop 失败')
+  return r.output
+}
+
+/** 列出 Picop 已保存的工作流（仅名称与描述） */
+async function listWorkflows() {
+  const r = await runnerJson('/workflows')
+  if (r.status !== 'success')
+    throw new Error(r.error || '获取已保存工作流列表失败')
+  const workflows = Array.isArray(r.output?.workflows) ? r.output.workflows : []
+  return {
+    workflows: workflows.map((w) => ({
+      id: w.id,
+      name: w.name,
+      description: w.description || '',
+    })),
   }
 }
 
@@ -259,7 +368,7 @@ const TOOLS = [
   {
     name: 'workflow_export',
     description:
-      '把 workflow_build 返回的工作流定义导出为可执行产物并写入用户项目目录，与画布导出一致（共用 shared/export-core.mjs）。format 支持 4 种：speckit（specify/workflows/<name>/workflow.yml，SpecKit 命令步骤流水线）、openspec（openspec/schemas/<name>/schema.yaml，artifacts 依赖图 + apply 跟踪 + tasks 自动补全）、spec（spec/changes/<name>/specs/<name>/workflow.yaml，同构 artifacts 无 apply）、skill（skills/<name>/SKILL.md，独立任务指令技能）。',
+      '把 workflow_build 返回的工作流定义导出为可执行产物并写入用户项目目录，与画布导出一致（共用 shared/export-core.mjs）。默认 full=true 全量导出：主工作流文件 + 各节点引用的输入物（userInput 静态内容 / Skill / Memory / BMad / Lark URL 清单 + lark-cli 技能）+ manifest.json，全部以真实目录文件形式写入 targetDir（非 zip；zip 仅用于画布下载场景）。format 支持 4 种：speckit（specify/workflows/<name>/workflow.yml，SpecKit 命令步骤流水线）、openspec（openspec/schemas/<name>/schema.yaml，artifacts 依赖图 + apply 跟踪 + tasks 自动补全，另附 openspec/config.yaml）、spec（spec/changes/<name>/specs/<name>/workflow.yaml，同构 artifacts 无 apply）、skill（skills/<name>/SKILL.md，独立任务指令技能）。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -285,11 +394,49 @@ const TOOLS = [
         },
         description: {
           type: 'string',
+          description: '工作流一句话描述（用于 openspec/spec/skill 产物）。',
+        },
+        full: {
+          type: 'boolean',
           description:
-            '仅 skill 格式：SKILL.md frontmatter description，缺省按节点自动生成。',
+            '是否全量导出（主文件 + 输入物 + manifest），缺省 true；false 则仅写主工作流文件。',
         },
       },
       required: ['workflow', 'name', 'targetDir'],
+    },
+  },
+  {
+    name: 'workflow_save',
+    description:
+      '把工作流定义保存到 Picop 本地工作流模板库（与画布「保存工作流模板」共享同一存储，保存后可回到画布加载、继续编排或重新导出）。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        workflow: {
+          type: 'object',
+          description:
+            'workflow_build 返回的 workflow 对象（含 nodes/edges）。',
+        },
+        name: {
+          type: 'string',
+          description: '工作流名称（用于生成保存 id）。',
+        },
+        description: {
+          type: 'string',
+          description:
+            '简短描述（供 workflow_list 列表展示）；缺省按节点自动生成。',
+        },
+      },
+      required: ['workflow', 'name'],
+    },
+  },
+  {
+    name: 'workflow_list',
+    description:
+      '列出 Picop 本地已保存的工作流模板（仅名称与描述），供复用、续编或挑选后导出。',
+    inputSchema: {
+      type: 'object',
+      properties: {},
     },
   },
 ]
@@ -319,6 +466,8 @@ async function handle(msg) {
       if (name === 'workflow_build')
         result = await buildWorkflowFromPrompt(args)
       else if (name === 'workflow_export') result = await exportWorkflow(args)
+      else if (name === 'workflow_save') result = await saveWorkflow(args)
+      else if (name === 'workflow_list') result = await listWorkflows()
       else throw new Error(`未知工具: ${name}`)
       return {
         jsonrpc: '2.0',

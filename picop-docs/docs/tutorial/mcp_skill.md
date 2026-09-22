@@ -22,14 +22,16 @@ Picop 通过 **MCP（Model Context Protocol）+ SKILL** 把平台能力直连到
    → 你的项目目录
 ```
 
-它暴露两个 MCP 工具：
+它暴露四个 MCP 工具：
 
-| 工具              | 作用                                                             | 关键入参                                            |
-| ----------------- | ---------------------------------------------------------------- | --------------------------------------------------- |
-| `workflow_build`  | 把自然语言描述的工作流程，交给本机 AI CLI 生成工作流定义（JSON） | `description`（必填）、`tool`、`timeoutMs`          |
-| `workflow_export` | 把工作流定义导出为 4 种产物之一并写入你的项目                    | `workflow`、`name`、`targetDir`（均必填）、`format` |
+| 工具              | 作用                                                                       | 关键入参                                                                 |
+| ----------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `workflow_build`  | 把自然语言描述的工作流程，交给本机 AI CLI 生成工作流定义（JSON）           | `description`（必填）、`tool`、`timeoutMs`                               |
+| `workflow_export` | 把工作流定义全量导出为目录文件并写入你的项目（主文件 + 输入物 + manifest） | `workflow`、`name`、`targetDir`（均必填）、`format`、`full`（缺省 true） |
+| `workflow_save`   | 把工作流定义保存到 Picop 工作流模板库（画布「保存工作流模板」同源存储）    | `workflow`、`name`（必填）、`description`                                |
+| `workflow_list`   | 列出 Picop 已保存的工作流模板（仅名称 + 描述）                             | 无                                                                       |
 
-**四零原则全程保持**：MCP Server 跑在你本机、无外部依赖，不存数据、不持凭据、不跑运行时；产物只写入你显式指定的项目目录。
+**四零原则全程保持**：MCP Server 跑在你本机、无外部依赖，不存数据、不持凭据、不跑运行时；导出产物只写入你显式指定的项目目录，保存操作写入 Picop 自己的工作流模板库（你本机 `workflows/` 目录）。
 
 ---
 
@@ -109,7 +111,11 @@ claude mcp add picop -- node <上面定位到的 mcp.mjs 绝对路径>
 
 ## 四、使用流程
 
-把「生成工作流 / 搭建工作流 / 把流程导出到项目」的意图交给工具里的 AI，分发技能 `.skills/picop-mcp/SKILL.md` 会指导它完成三步。
+把「生成工作流 / 搭建工作流 / 把流程导出到项目」的意图交给工具里的 AI，分发技能 `.skills/picop-mcp/SKILL.md` 会指导它完成。分发技能支持三个调用参数（附加在描述后，二选一）：
+
+- **`-s` / `--save`** — 生成后**保存到 Picop 工作流模板库**（调用 `workflow_save`），不导出到项目目录。示例：`生成一个每周晨会纪要工作流 -s`。
+- **`-l` / `--list`** — **只列出** Picop 已保存的工作流名称与描述（调用 `workflow_list`），不生成、不导出。
+- 不带参数 — 默认导出模式（下述流程）。
 
 > **重要**：本能力的唯一职责是**把流程沉淀为可复用的工作流产物**。你给出的一组步骤（例如「先读取 X，再分析，再检索 Y，最后输出 Z」）是 `workflow_build` 的 `description` 输入素材，**不是执行清单**。
 
@@ -117,15 +123,16 @@ claude mcp add picop -- node <上面定位到的 mcp.mjs 绝对路径>
 
 AI 把你的自然语言描述交给本机 AI CLI 转换成工作流定义，并返回 `explanation`（对流程的理解）+ `workflow`（`{ nodes, edges }`）。请先确认 `explanation` 与你的预期一致。
 
-### 2. 导出产物（workflow_export）
+### 2. 保存到 Picop（workflow_save）或导出产物（workflow_export）
 
-选择导出格式与名称，指定**你项目根目录的绝对路径**作为 `targetDir`，即可写入产物。
+- 带 `-s`：调用 `workflow_save`，传入 build 返回的 `workflow` 与 `name`（`description` 可省略，缺省按节点自动生成）。保存后可在画布的「保存工作流模板」列表里看到，回画布继续编排或导出。
+- 导出：选择导出格式与名称，指定**你项目根目录的绝对路径**作为 `targetDir`。`workflow_export` **默认全量导出**（`full=true`）：除主工作流文件外，各节点引用的输入物（userInput 静态内容 / Skill / Memory / BMad / Lark URL 清单 + lark-cli 技能）与 `manifest.json` 一并以真实目录文件写入 `targetDir`（不是 zip——zip 只用于画布下载场景，MCP 直接落盘目录结构）。
 
 > `workflow` 必须使用 build 返回的对象，不要自行编造或改写节点。
 
 ### 3. 汇报与执行
 
-AI 会列出实际写入的文件路径，并按格式告诉你执行方式。
+AI 会列出保存结果（`-s`）/ 已保存工作流列表（`-l`）/ 实际写入的文件路径与执行方式（导出）。
 
 ---
 
@@ -144,12 +151,13 @@ AI 会列出实际写入的文件路径，并按格式告诉你执行方式。
 
 ## 六、输出物校验
 
-- 本能力的**合法输出物仅有以下 4 类**：
+- 本能力的**合法输出物有以下 5 类**：
+  - 保存到 Picop 工作流模板库（`workflow_save`，供画布加载/续编）
   - `specify/workflows/<name>/workflow.yml`
   - `openspec/schemas/<name>/schema.yaml`
   - `spec/changes/<name>/specs/<name>/workflow.yaml`
   - `skills/<name>/SKILL.md`
-- 若最终产出是这 4 类之外的任何文件（例如分析报告 `xxx.md`、文档摘要等），说明走错了流程，应回退到 `workflow_build` → `workflow_export` 重新产出合法产物。
+- 若最终产出是这 5 类之外的任何文件（例如分析报告 `xxx.md`、文档摘要等），说明走错了流程，应回退到 `workflow_build` 重新产出合法产物。
 
 ---
 
