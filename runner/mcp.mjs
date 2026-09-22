@@ -7,25 +7,31 @@
  *   - workflow_export：工作流定义 → workflow.yml / schema.yaml / SKILL.md
  *     （与画布导出共用 shared/export-core.mjs，产物完全一致；经 Runner /file-write 落盘到用户项目）
  *
- * 用户侧注册示例（Claude Code）：
+ * 用户侧注册示例（Claude Code，源码运行形态）：
  *   claude mcp add picop -- node <ai-workflow>/runner/mcp.mjs
  *
- * 依赖：本机已启动 Runner（node runner/server.mjs，默认 http://127.0.0.1:7523）
+ * 已安装桌面应用形态：本文件位于 App 包内，且不假设系统装有 node，
+ * 直接复用 App 自带 Node（ELECTRON_RUN_AS_NODE=1）：
+ *   command = /Applications/Picop.app/Contents/MacOS/Picop
+ *   args    = [/Applications/Picop.app/Contents/Resources/app/runner/mcp.mjs]
+ *   env     = { ELECTRON_RUN_AS_NODE: "1" }
+ *
+ * 依赖：Runner 已在 127.0.0.1:7523 就绪
+ *   - 源码运行：手动执行 node runner/server.mjs
+ *   - 已安装 App：由 App 主进程自动拉起（保持 App 运行即可）
  * 环境变量：
  *   RUNNER_URL   Runner 地址，默认 http://127.0.0.1:7523
- *   PICOP_DIR    ai-workflow 项目目录（定位 prompts/），默认本文件上一级
+ *   PICOP_DIR    定位 prompts/ 的目录，默认本文件上一级
+ *                （已装 App 想与画布共用自定义 prompts 时，指向 App 的 userData/data）
  *
- * 启动：node runner/mcp.mjs
+ * 启动：node runner/mcp.mjs（源码运行）
  */
 
 import fs from 'node:fs'
 import path from 'node:path'
 import readline from 'node:readline'
 import { fileURLToPath } from 'node:url'
-import {
-  NodeTypes,
-  buildWorkflow,
-} from '../shared/export-core.mjs'
+import { NodeTypes, buildWorkflow } from '../shared/export-core.mjs'
 
 const PROTOCOL_VERSION = '2024-11-05'
 const RUNNER_URL = process.env.RUNNER_URL || 'http://127.0.0.1:7523'
@@ -84,7 +90,9 @@ async function buildWorkflowFromPrompt({ description, tool, timeoutMs }) {
     const probe = await runnerJson('/tools')
     const first = (probe?.output?.tools || []).find((t) => t.available)
     if (!first) {
-      throw new Error('本机未安装任何 AI CLI 工具（claude-code / codex / deepseek），请先安装一个')
+      throw new Error(
+        '本机未安装任何 AI CLI 工具（claude-code / codex / deepseek），请先安装一个',
+      )
     }
     toolId = first.id
   }
@@ -136,7 +144,13 @@ function safeResolve(targetDir) {
   return path.resolve(raw)
 }
 
-async function exportWorkflow({ workflow, format = 'speckit', name, targetDir, description }) {
+async function exportWorkflow({
+  workflow,
+  format = 'speckit',
+  name,
+  targetDir,
+  description,
+}) {
   // workflow 允许是对象或 JSON 字符串
   let def = workflow
   if (typeof workflow === 'string') def = JSON.parse(workflow)
@@ -151,8 +165,10 @@ async function exportWorkflow({ workflow, format = 'speckit', name, targetDir, d
   // 节点归一化：补 id / position / data（AI 生成的节点可能缺字段），并校验类型
   // flowBuilder 把标题放在顶层 title、data 内不含 title，这里归位到 data.title 以对齐画布节点结构
   const nodes = rawNodes.map((n, i) => {
-    if (!n || typeof n.type !== 'string') throw new Error(`第 ${i + 1} 个节点缺少 type`)
-    if (!VALID_NODE_TYPES.has(n.type)) throw new Error(`未知节点类型: ${n.type}`)
+    if (!n || typeof n.type !== 'string')
+      throw new Error(`第 ${i + 1} 个节点缺少 type`)
+    if (!VALID_NODE_TYPES.has(n.type))
+      throw new Error(`未知节点类型: ${n.type}`)
     const data = n.data && typeof n.data === 'object' ? { ...n.data } : {}
     if (!data.title && typeof n.title === 'string' && n.title.trim()) {
       data.title = n.title.trim()
@@ -169,15 +185,19 @@ async function exportWorkflow({ workflow, format = 'speckit', name, targetDir, d
   const nodeIds = new Set(nodes.map((n) => n.id))
   const edges = rawEdges
     .map((e) => {
-      const source = typeof e.source === 'number' ? nodes[e.source]?.id : e.source
-      const target = typeof e.target === 'number' ? nodes[e.target]?.id : e.target
+      const source =
+        typeof e.source === 'number' ? nodes[e.source]?.id : e.source
+      const target =
+        typeof e.target === 'number' ? nodes[e.target]?.id : e.target
       return { ...e, source, target, id: e.id || `${source}-${target}` }
     })
     .filter((e) => nodeIds.has(e.source) && nodeIds.has(e.target))
 
   const fmt = String(format)
   if (!['speckit', 'openspec', 'spec', 'skill'].includes(fmt)) {
-    throw new Error(`不支持的格式: ${format}（支持 speckit / openspec / spec / skill）`)
+    throw new Error(
+      `不支持的格式: ${format}（支持 speckit / openspec / spec / skill）`,
+    )
   }
 
   // 与画布导出共用同一实现（shared/export-core.mjs），保证产物完全一致
@@ -195,7 +215,8 @@ async function exportWorkflow({ workflow, format = 'speckit', name, targetDir, d
     method: 'POST',
     body: { filePath: full, content: yaml },
   })
-  if (r.status !== 'success') throw new Error(r.error || `文件写入失败: ${workflowPath}`)
+  if (r.status !== 'success')
+    throw new Error(r.error || `文件写入失败: ${workflowPath}`)
 
   return {
     format: fmt,
@@ -218,12 +239,14 @@ const TOOLS = [
       properties: {
         description: {
           type: 'string',
-          description: '用户用自然语言描述的工作流程（如：每周一早上总结上周飞书会议纪要并生成周报）。',
+          description:
+            '用户用自然语言描述的工作流程（如：每周一早上总结上周飞书会议纪要并生成周报）。',
         },
         tool: {
           type: 'string',
           enum: ['claude-code', 'codex', 'deepseek'],
-          description: '执行生成的本地 AI CLI 工具 id；缺省自动探测第一个已安装的。',
+          description:
+            '执行生成的本地 AI CLI 工具 id；缺省自动探测第一个已安装的。',
         },
         timeoutMs: {
           type: 'number',
@@ -242,7 +265,8 @@ const TOOLS = [
       properties: {
         workflow: {
           type: 'object',
-          description: 'workflow_build 返回的 workflow 对象（含 nodes/edges）。',
+          description:
+            'workflow_build 返回的 workflow 对象（含 nodes/edges）。',
         },
         format: {
           type: 'string',
@@ -256,11 +280,13 @@ const TOOLS = [
         },
         targetDir: {
           type: 'string',
-          description: '导出目标目录（用户项目根目录的绝对路径），产物将写入其下。',
+          description:
+            '导出目标目录（用户项目根目录的绝对路径），产物将写入其下。',
         },
         description: {
           type: 'string',
-          description: '仅 skill 格式：SKILL.md frontmatter description，缺省按节点自动生成。',
+          description:
+            '仅 skill 格式：SKILL.md frontmatter description，缺省按节点自动生成。',
         },
       },
       required: ['workflow', 'name', 'targetDir'],
@@ -290,7 +316,8 @@ async function handle(msg) {
     case 'tools/call': {
       const { name, arguments: args = {} } = params
       let result
-      if (name === 'workflow_build') result = await buildWorkflowFromPrompt(args)
+      if (name === 'workflow_build')
+        result = await buildWorkflowFromPrompt(args)
       else if (name === 'workflow_export') result = await exportWorkflow(args)
       else throw new Error(`未知工具: ${name}`)
       return {
@@ -301,7 +328,11 @@ async function handle(msg) {
     }
     default:
       if (id !== undefined) {
-        return { jsonrpc: '2.0', id, error: { code: -32601, message: `未知方法: ${method}` } }
+        return {
+          jsonrpc: '2.0',
+          id,
+          error: { code: -32601, message: `未知方法: ${method}` },
+        }
       }
       return null
   }
@@ -317,7 +348,11 @@ async function handleAndSend(msg) {
     if (res) send(res)
   } catch (err) {
     if (msg.id !== undefined) {
-      send({ jsonrpc: '2.0', id: msg.id, error: { code: -32603, message: err.message } })
+      send({
+        jsonrpc: '2.0',
+        id: msg.id,
+        error: { code: -32603, message: err.message },
+      })
     }
   }
 }
@@ -325,7 +360,10 @@ async function handleAndSend(msg) {
 // 串行队列：保证每条消息按序处理、响应按序输出
 // （stdin 关闭后不强制退出：等待 pending 的异步任务（Runner 调用）完成，事件循环自然结束）
 let queue = Promise.resolve()
-const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity })
+const rl = readline.createInterface({
+  input: process.stdin,
+  crlfDelay: Infinity,
+})
 rl.on('line', (line) => {
   const trimmed = line.trim()
   if (!trimmed) return

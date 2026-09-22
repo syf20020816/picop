@@ -22,9 +22,14 @@ metadata:
 
 ## 前置条件（首次使用检查）
 
-1. 本机已启动 Picop Runner：`node <ai-workflow>/runner/server.mjs`（监听 `127.0.0.1:7523`；`<ai-workflow>` 同样替换为上面定位到的真实目录）。可用 `curl http://127.0.0.1:7523/ping` 验证。
+1. Picop Runner 已在 `127.0.0.1:7523` 运行，按 Picop 形态二选一：
+   - **源码运行**：在 `ai-workflow` 目录执行 `node runner/server.mjs`。
+   - **已安装桌面应用**：打开 Picop App 即可（Runner 由 App 主进程自动拉起，退出 App 会一并停止）。
+   - 验证：`curl http://127.0.0.1:7523/ping`。
 2. 本机已安装任一 AI CLI 工具：Claude Code（`claude`）/ Codex（`codex`）/ DeepSeek Harness（`deepseek`）——`workflow_build` 会用它生成工作流。
-3. MCP server 已注册（在用户工具中执行一次）。
+3. MCP server 已注册（在用户工具中执行一次）。**注册形态必须与 Picop 形态一致**：
+
+   **形态 A：源码运行（本机有 ai-workflow 源码）**
 
    > ⚠️ 路径警告：`<ai-workflow>` 只是占位符，**绝不能原样照抄**。它必须替换为本机真实的 `ai-workflow` 目录绝对路径（该目录内含有 `runner/mcp.mjs`）。
    >
@@ -47,6 +52,26 @@ metadata:
        }
      }
      ```
+
+   **形态 B：已安装桌面应用（只装了 Picop.app，无源码）**
+
+   打包后本文件位于 App 包内，且**不假设机器装有系统 node**——用 App 自带 Node（`ELECTRON_RUN_AS_NODE=1`）最稳：
+
+   ```json
+   {
+     "mcpServers": {
+       "picop": {
+         "command": "/Applications/Picop.app/Contents/MacOS/Picop",
+         "args": [
+           "/Applications/Picop.app/Contents/Resources/app/runner/mcp.mjs"
+         ],
+         "env": { "ELECTRON_RUN_AS_NODE": "1" }
+       }
+     }
+   }
+   ```
+
+   > 用此形态**不要用 `command: node`**；`find ~` 也搜不到 `/Applications`，直接用上面的固定路径（App 未装在 `/Applications` 时换成实际路径）。
 
 ## 工作流程
 

@@ -1,7 +1,8 @@
 {
-  "name": "workflow",
+  "name": "picop",
   "private": true,
   "type": "module",
+  "version": "0.1.0",
   "main": "electron/main.mjs",
   "imports": {
     "#/*": "./src/*"

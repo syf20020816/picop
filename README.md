@@ -1,4 +1,4 @@
-# AI Workflow — AI 工作流可视化编排工具
+# PICOP — AI 工作流可视化编排工具
 
 基于 [BMad Method](https://bmadcodes.com/) + Lark CLI 构建的轻量化 AI 工作流编排工具，提供可视化节点编排能力，适合需要快速搭建 AI Agent 工作流的场景，避免 Dify 等重型平台的复杂性。
 
@@ -36,6 +36,8 @@
 
 **接入方式（一次性）**：
 
+**形态 A：源码运行**（本机有 `ai-workflow` 源码）
+
 ```bash
 # Claude Code
 claude mcp add picop -- node <ai-workflow>/runner/mcp.mjs
@@ -44,6 +46,24 @@ claude mcp add picop -- node <ai-workflow>/runner/mcp.mjs
 ```
 
 > `<ai-workflow>` 是占位符，必须替换为本机真实绝对路径；可用 `find ~ -maxdepth 5 -type f -name mcp.mjs -path "*runner*"` 定位。
+
+**形态 B：已安装桌面应用**（只装了 Picop.app，无源码）
+
+打包后 `runner/mcp.mjs` 位于 App 包内，且**不假设机器装有系统 node**——直接复用 App 自带 Node：
+
+```json
+{
+  "mcpServers": {
+    "picop": {
+      "command": "/Applications/Picop.app/Contents/MacOS/Picop",
+      "args": ["/Applications/Picop.app/Contents/Resources/app/runner/mcp.mjs"],
+      "env": { "ELECTRON_RUN_AS_NODE": "1" }
+    }
+  }
+}
+```
+
+> Runner 由 App 主进程自动拉起，**保持 Picop 运行**即可（退出 App 会一并停掉 Runner）；`find ~` 搜不到 `/Applications`，形态 B 直接用上面的固定路径。
 
 平台分发技能 [`.skills/picop-mcp/SKILL.md`](.skills/picop-mcp/SKILL.md) 指导工具里的 AI 完成「build → export → 汇报」三步（含路径定位、4 种格式选型、输出物校验）。四零原则全程保持：MCP server 跑在用户本机、无外部依赖，不存数据、不持凭据、不跑运行时，产物只写入用户指定的项目目录。
 

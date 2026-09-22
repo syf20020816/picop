@@ -37,11 +37,10 @@ Picop 通过 **MCP（Model Context Protocol）+ SKILL** 把平台能力直连到
 
 首次使用前，请确认以下三项：
 
-1. **本机已启动 Picop Runner**（`127.0.0.1:7523`）。在 `ai-workflow` 目录执行：
+1. **Picop Runner 已在 `127.0.0.1:7523` 运行**，按 Picop 形态二选一：
 
-   ```bash
-   node runner/server.mjs
-   ```
+   - **源码运行**：在 `ai-workflow` 目录执行 `node runner/server.mjs`。
+   - **已安装桌面应用**：打开 Picop App 即可（Runner 由 App 主进程自动拉起；退出 App 会一并停止）。
 
    可用以下命令验证：
 
@@ -56,6 +55,10 @@ Picop 通过 **MCP（Model Context Protocol）+ SKILL** 把平台能力直连到
 ---
 
 ## 三、注册 MCP Server（一次性）
+
+注册形态必须与你的 Picop 形态一致。
+
+### 形态 A：源码运行（本机有 `ai-workflow` 源码）
 
 > **路径提示**：`<ai-workflow>` 只是占位符，**必须替换为你本机 `ai-workflow` 的真实绝对路径**（该目录内含 `runner/mcp.mjs`），不要使用含 `~` 的相对写法。
 >
@@ -83,6 +86,24 @@ claude mcp add picop -- node <上面定位到的 mcp.mjs 绝对路径>
   }
 }
 ```
+
+### 形态 B：已安装桌面应用（只装了 `Picop.app`，无源码）
+
+打包后 `runner/mcp.mjs` 位于 App 包内，且**不假设机器装有系统 node**——直接复用 App 自带 Node（`ELECTRON_RUN_AS_NODE=1`）最稳：
+
+```json
+{
+  "mcpServers": {
+    "picop": {
+      "command": "/Applications/Picop.app/Contents/MacOS/Picop",
+      "args": ["/Applications/Picop.app/Contents/Resources/app/runner/mcp.mjs"],
+      "env": { "ELECTRON_RUN_AS_NODE": "1" }
+    }
+  }
+}
+```
+
+> **不要用 `command: node`**：已安装 App 的机器未必有系统 node；`find ~` 也搜不到 `/Applications`，直接使用上面的固定路径（App 未装在 `/Applications` 时换成实际路径）。Runner 由 App 自动拉起，**保持 Picop 运行**即可。
 
 ---
 
