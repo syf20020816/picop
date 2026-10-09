@@ -29,13 +29,20 @@ export const Route = createFileRoute('/api/export/zip')({
             mergeParallel: options?.mergeParallel ?? false,
           }
 
-          const { yaml, workflowPath } = buildWorkflow(target, nodes, edges, exportOptions)
+          const { yaml, workflowPath } = buildWorkflow(
+            target,
+            nodes,
+            edges,
+            exportOptions,
+          )
 
-          const [{ default: JSZip }, { collectArtifacts, openSpecSchemaDir, specChangeDir }] =
-            await Promise.all([
-              import('jszip'),
-              import('#/services/artifactCollector'),
-            ])
+          const [
+            { default: JSZip },
+            { collectArtifacts, openSpecSchemaDir, specChangeDir },
+          ] = await Promise.all([
+            import('jszip'),
+            import('#/services/artifactCollector'),
+          ])
 
           const zip = new JSZip()
 
@@ -61,14 +68,18 @@ export const Route = createFileRoute('/api/export/zip')({
                   : ''
 
           for (const item of collected) {
-            zip.file(prefix + item.path, item.content)
+            // Skill 形态：被引用的其他技能落盘为 `skills/<id>/SKILL.md`，
+            // 与主技能目录同级，而不是嵌套进主技能目录内部
+            const nested = target === 'skill' && item.path.startsWith('skills/')
+            zip.file((nested ? '' : prefix) + item.path, item.content)
             if (item.warning) logs.push(`警告: ${item.warning}`)
           }
 
           // 3. OpenSpec 附加文件：config.yaml（默认 schema）+ changes/archive/ 目录
           if (target === 'openspec') {
             // schema 名与 openspec/schemas/<name>/ 目录名保持一致（同为 toStepId 清洗结果）
-            const schemaName = prefix.split('/').filter(Boolean).pop() || 'picop-workflow'
+            const schemaName =
+              prefix.split('/').filter(Boolean).pop() || 'picop-workflow'
             zip.file('openspec/config.yaml', `schema: ${schemaName}\n`)
             zip.file('openspec/changes/archive/.gitkeep', '')
             logs.push('已生成 openspec/config.yaml')
@@ -86,7 +97,10 @@ export const Route = createFileRoute('/api/export/zip')({
           zip.file('manifest.json', JSON.stringify(manifest, null, 2))
 
           const content = await zip.generateAsync({ type: 'uint8array' })
-          const safeName = (name || 'picop-workflow').replace(/[^a-zA-Z0-9_-]+/g, '-')
+          const safeName = (name || 'picop-workflow').replace(
+            /[^a-zA-Z0-9_-]+/g,
+            '-',
+          )
 
           return new Response(content.buffer as ArrayBuffer, {
             status: 200,

@@ -8,7 +8,11 @@ import {
 } from '#/services/exporter'
 
 /** 构造测试节点 */
-function makeNode(id: string, type: string, data: Record<string, unknown>): Node {
+function makeNode(
+  id: string,
+  type: string,
+  data: Record<string, unknown>,
+): Node {
   return { id, type, position: { x: 0, y: 0 }, data: { title: id, ...data } }
 }
 
@@ -18,11 +22,17 @@ function makeEdge(source: string, target: string): Edge {
 
 describe('导出物管理', () => {
   const nodes = [
-    makeNode('lark-1', 'lark', { url: 'https://x.feishu.cn/docx/abc', specStep: 'plan' }),
+    makeNode('lark-1', 'lark', {
+      url: 'https://x.feishu.cn/docx/abc',
+      specStep: 'plan',
+    }),
     makeNode('agent-1', 'agent', { specStep: 'plan' }),
     makeNode('task-1', 'taskPlanner', { specStep: 'tasks' }),
     makeNode('skill-1', 'skill', { skillId: '前端技术文档编写指南' }),
-    makeNode('input-1', 'userInput', { input: { label: '需求描述', prompt: '写一个登录页' }, specStep: 'spec' }),
+    makeNode('input-1', 'userInput', {
+      input: { label: '需求描述', prompt: '写一个登录页' },
+      specStep: 'spec',
+    }),
   ]
   const edges = [
     makeEdge('lark-1', 'agent-1'),
@@ -33,8 +43,11 @@ describe('导出物管理', () => {
 
   it('speckit：lark+plan 生成 shell 拉取步骤，agent+plan 被跳过', () => {
     const { yaml } = buildSpecKitWorkflow(nodes, edges, { name: '测试' })
-    expect(yaml).toContain("type: shell")
-    expect(yaml).toContain(`lark-cli docs +fetch --doc "https://x.feishu.cn/docx/abc" --doc-format markdown --jq '.data.document.content' > plan.md`)
+    expect(yaml).toContain('type: shell')
+    // URL 不内联：运行时从 inputs/urls.md 的「读取」段取值
+    expect(yaml).toContain('+fetch')
+    expect(yaml).toContain('inputs/urls.md')
+    expect(yaml).not.toContain('https://x.feishu.cn/docx/abc')
     // agent-1 (specStep: plan) 的产物已由 lark-1 提供，应被跳过
     expect(yaml).not.toContain('speckit.plan')
     // taskPlanner 正常导出
@@ -48,14 +61,19 @@ describe('导出物管理', () => {
   })
 
   it('speckit：无 specStep 的输入节点不导出为 command 步骤', () => {
-    const { yaml } = buildSpecKitWorkflow([makeNode('skill-2', 'skill', { skillId: 's' })], [])
+    const { yaml } = buildSpecKitWorkflow(
+      [makeNode('skill-2', 'skill', { skillId: 's' })],
+      [],
+    )
     // skill 无 specStep：无 step、也不计入控制节点跳过注释
     expect(yaml).not.toContain('control node')
     expect(yaml).not.toContain('speckit.plan')
   })
 
   it('openspec：输入节点生成拉取指引，生成节点同名 artifact 跳过', () => {
-    const { yaml, workflowPath } = buildOpenSpecWorkflow(nodes, edges, { name: '测试' })
+    const { yaml, workflowPath } = buildOpenSpecWorkflow(nodes, edges, {
+      name: '测试',
+    })
     expect(yaml).toContain('lark-cli')
     expect(yaml).toContain('design.md')
     // design artifact 只出现一次（agent 的 plan→design 被 lark 覆盖）
@@ -88,7 +106,11 @@ describe('导出物管理', () => {
         projectPath: '/path/to/singer-center',
         branch: 'master',
       }),
-      makeNode('lark-write', 'lark', { action: 'write', url: 'https://x.feishu.cn/wiki/target', specStep: 'plan' }),
+      makeNode('lark-write', 'lark', {
+        action: 'write',
+        url: 'https://x.feishu.cn/wiki/target',
+        specStep: 'plan',
+      }),
     ]
     const scEdges = [
       makeEdge('input-1', 'lark-read'),
@@ -100,21 +122,33 @@ describe('导出物管理', () => {
       makeEdge('code-1', 'lark-write'),
     ]
 
-    const { yaml } = buildOpenSpecWorkflow(scNodes, scEdges, { name: '音乐人中心' })
+    const { yaml } = buildOpenSpecWorkflow(scNodes, scEdges, {
+      name: '音乐人中心',
+    })
 
     // agent → proposal artifact（类型兜底），instruction 含输入上下文引用
     expect(yaml).toContain('- id: proposal')
     expect(yaml).toContain('## 输入上下文')
     expect(yaml).toContain('inputs/user-input/')
-    expect(yaml).toContain('lark-cli docs +fetch')
+    // lark read 引用 urls.md（不内联 URL、不内联取数命令）
+    expect(yaml).toContain(
+      'openspec/schemas/音乐人中心/inputs/urls.md 的「Lark 文档（读取）」第 1 条',
+    )
     expect(yaml).toContain('memory/memory.md')
 
     // codeAgent 经 lark write 反向挂接获得 design artifact，instruction 含角色/路径/投递
     expect(yaml).toContain('- id: design')
     expect(yaml).toContain('## 角色')
     expect(yaml).toContain('Amelia')
-    expect(yaml).toContain('/path/to/singer-center')
-    expect(yaml).toContain('lark-cli docs +update --doc "https://x.feishu.cn/wiki/target" --command overwrite')
+    // 项目路径不内联：引用 urls.md 的「项目位置」段
+    expect(yaml).toContain(
+      '项目路径：见 openspec/schemas/音乐人中心/inputs/urls.md 的「项目位置」第 1 条',
+    )
+    expect(yaml).not.toContain('/path/to/singer-center')
+    expect(yaml).toContain(
+      '使用 lark-cli 将 design.md 全文写入飞书文档（URL 见 openspec/schemas/音乐人中心/inputs/urls.md 的「Lark 文档（写入）」第 1 条）',
+    )
+    expect(yaml).not.toContain('https://x.feishu.cn/wiki/target')
     expect(yaml).toContain('@design.md')
 
     // skill 引用注入 codeAgent 上下文
@@ -126,16 +160,29 @@ describe('导出物管理', () => {
     // tasks 自动补全 + apply 跟踪
     expect(yaml).toContain('自动补全')
     expect(yaml).toContain('tracks: tasks.md')
-    expect(yaml).toContain('apply:\n  requires:\n    - tasks\n  tracks: tasks.md')
+    expect(yaml).toContain(
+      'apply:\n  requires:\n    - tasks\n  tracks: tasks.md',
+    )
   })
 
   it('speckit：lark write 生成投递 shell 步骤（不生成拉取步骤）', () => {
     const scNodes = [
       makeNode('code-1', 'codeAgent', { instruction: '分析代码' }),
-      makeNode('lark-write', 'lark', { action: 'write', url: 'https://x.feishu.cn/wiki/target', specStep: 'plan' }),
+      makeNode('lark-write', 'lark', {
+        action: 'write',
+        url: 'https://x.feishu.cn/wiki/target',
+        specStep: 'plan',
+      }),
     ]
-    const { yaml } = buildSpecKitWorkflow(scNodes, [makeEdge('code-1', 'lark-write')], { name: '测试' })
-    expect(yaml).toContain('lark-cli docs +update --doc "https://x.feishu.cn/wiki/target" --command overwrite --content @plan.md')
+    const { yaml } = buildSpecKitWorkflow(
+      scNodes,
+      [makeEdge('code-1', 'lark-write')],
+      { name: '测试' },
+    )
+    expect(yaml).toContain('+update')
+    expect(yaml).toContain('--content @plan.md')
+    expect(yaml).toContain('inputs/urls.md')
+    expect(yaml).not.toContain('https://x.feishu.cn/wiki/target')
     // write 节点不被当作输入源拉取
     expect(yaml).not.toContain('+fetch')
   })
@@ -143,7 +190,10 @@ describe('导出物管理', () => {
   it('spec：只认手动标注，artifact id 用 specStep key，无 tasks 自动补全', () => {
     const scNodes = [
       makeNode('input-1', 'userInput', { input: { prompt: '需求描述' } }),
-      makeNode('lark-read', 'lark', { url: 'https://x.feishu.cn/wiki/read', specStep: 'spec' }),
+      makeNode('lark-read', 'lark', {
+        url: 'https://x.feishu.cn/wiki/read',
+        specStep: 'spec',
+      }),
       makeNode('agent-1', 'agent', { title: '需求文档梳理', specStep: 'spec' }),
       makeNode('agent-unmarked', 'agent', { title: '未标注节点' }),
       makeNode('code-1', 'codeAgent', {
@@ -151,7 +201,11 @@ describe('导出物管理', () => {
         instruction: '分析项目代码输出技术文档',
         projectPath: '/path/to/singer-center',
       }),
-      makeNode('lark-write', 'lark', { action: 'write', url: 'https://x.feishu.cn/wiki/target', specStep: 'plan' }),
+      makeNode('lark-write', 'lark', {
+        action: 'write',
+        url: 'https://x.feishu.cn/wiki/target',
+        specStep: 'plan',
+      }),
     ]
     const scEdges = [
       makeEdge('input-1', 'lark-read'),
@@ -161,7 +215,9 @@ describe('导出物管理', () => {
       makeEdge('code-1', 'lark-write'),
     ]
 
-    const { yaml, workflowPath } = buildSpecWorkflow(scNodes, scEdges, { name: '音乐人中心' })
+    const { yaml, workflowPath } = buildSpecWorkflow(scNodes, scEdges, {
+      name: '音乐人中心',
+    })
 
     // lark read + spec → spec.md 拉取 artifact（输入节点优先，agent+spec 跳过）
     expect(yaml).toContain('- id: spec')
@@ -170,7 +226,10 @@ describe('导出物管理', () => {
     expect(yaml).toContain('- id: plan')
     expect(yaml).not.toContain('- id: design')
     expect(yaml).toContain('@plan.md')
-    expect(yaml).toContain('lark-cli docs +update --doc "https://x.feishu.cn/wiki/target"')
+    expect(yaml).toContain(
+      '使用 lark-cli 将 plan.md 全文写入飞书文档（URL 见 spec/changes/音乐人中心/inputs/urls.md 的「Lark 文档（写入）」第 1 条）',
+    )
+    expect(yaml).not.toContain('https://x.feishu.cn/wiki/target')
 
     // 未标注的处理节点不产出 artifact、无类型兜底、无 tasks 自动补全、无 apply 段
     expect(yaml).not.toContain('- id: proposal')
@@ -183,7 +242,9 @@ describe('导出物管理', () => {
     expect(yaml).toContain('spec/changes/音乐人中心/inputs/user-input/')
 
     // workflow.yaml 路径：spec/changes/<name>/specs/<name>/workflow.yaml
-    expect(workflowPath).toBe('spec/changes/音乐人中心/specs/音乐人中心/workflow.yaml')
+    expect(workflowPath).toBe(
+      'spec/changes/音乐人中心/specs/音乐人中心/workflow.yaml',
+    )
   })
 
   it('speckit：knowledgeRetrieval 双模式生成运行时步骤（api→curl / local→指令文件）', () => {
@@ -197,12 +258,14 @@ describe('导出物管理', () => {
         body: '{"query":"{{content}}"}',
       }),
     ]
-    const { yaml: apiYaml } = buildSpecKitWorkflow(apiNodes, [], { name: '测试' })
+    const { yaml: apiYaml } = buildSpecKitWorkflow(apiNodes, [], {
+      name: '测试',
+    })
     // run 值在 YAML 中用单引号包裹，内部单引号会被转义为 ''
     expect(apiYaml).toContain('curl -sS -X POST')
     expect(apiYaml).toContain("''https://kb.example.com/search''")
     expect(apiYaml).toContain('-H "Authorization: Bearer x"')
-    expect(apiYaml).toContain("''{\"query\":\"{{content}}\"}''")
+    expect(apiYaml).toContain('\'\'{"query":"{{content}}"}\'\'')
     expect(apiYaml).toContain('> knowledge-retrieval.md')
 
     // local 模式：heredoc 写入 MCP 检索指令文件
@@ -215,8 +278,12 @@ describe('导出物管理', () => {
         query: '最近的发布计划',
       }),
     ]
-    const { yaml: localYaml } = buildSpecKitWorkflow(localNodes, [], { name: '测试' })
-    expect(localYaml).toContain('使用你的 MCP 连接用户知识库（技能：知识库检索指南）检索：最近的发布计划')
+    const { yaml: localYaml } = buildSpecKitWorkflow(localNodes, [], {
+      name: '测试',
+    })
+    expect(localYaml).toContain(
+      '使用你的 MCP 连接用户知识库（技能：知识库检索指南）检索：最近的发布计划',
+    )
 
     // 不再产出 knowledge/*.md 快照引用
     expect(apiYaml + localYaml).not.toContain('knowledge/*.md')
@@ -247,7 +314,9 @@ describe('导出物管理', () => {
     const { yaml } = buildOpenSpecWorkflow(nodes, edges, { name: '测试' })
 
     // local → MCP 检索指令；api → curl 命令
-    expect(yaml).toContain('使用你的 MCP 连接用户知识库（技能：知识库检索指南）检索：最近发布计划')
+    expect(yaml).toContain(
+      '使用你的 MCP 连接用户知识库（技能：知识库检索指南）检索：最近发布计划',
+    )
     expect(yaml).toContain("curl -sS -X POST 'https://kb.example.com/search'")
     expect(yaml).not.toContain('knowledge/*.md')
   })
@@ -262,8 +331,12 @@ describe('导出物管理', () => {
         skillName: 'viki',
       }),
     ]
-    const { yaml: localYaml } = buildSpecKitWorkflow(localSkill, [], { name: '测试' })
-    expect(localYaml).toContain('使用你本机工具的本机技能「viki」完成对应工作。')
+    const { yaml: localYaml } = buildSpecKitWorkflow(localSkill, [], {
+      name: '测试',
+    })
+    expect(localYaml).toContain(
+      '使用你本机工具的本机技能「viki」完成对应工作。',
+    )
     expect(localYaml).not.toContain('skills/local:codex:viki/SKILL.md')
 
     // 平台技能：行为不变，仍 cp 随 zip 导出的技能文件
@@ -273,7 +346,9 @@ describe('导出物管理', () => {
         skillId: '前端技术文档编写指南',
       }),
     ]
-    const { yaml: pYaml } = buildSpecKitWorkflow(platformSkill, [], { name: '测试' })
+    const { yaml: pYaml } = buildSpecKitWorkflow(platformSkill, [], {
+      name: '测试',
+    })
     expect(pYaml).toContain('cp skills/前端技术文档编写指南/SKILL.md plan.md')
   })
 
@@ -300,13 +375,20 @@ describe('导出物管理', () => {
   it('skill：常规工程导出为 SKILL.md，无需 specStep，prompt 注入首个输入节点', () => {
     const nodes = [
       makeNode('input-1', 'userInput', { input: { prompt: '附加提示词' } }),
-      makeNode('kb-local', 'knowledgeRetrieval', { mode: 'local', skillName: '知识库检索指南', query: '最近发布计划' }),
+      makeNode('kb-local', 'knowledgeRetrieval', {
+        mode: 'local',
+        skillName: '知识库检索指南',
+        query: '最近发布计划',
+      }),
       makeNode('code-1', 'codeAgent', {
         instruction: '分析项目代码',
         projectPath: '/path/to/singer-center',
         branch: 'master',
       }),
-      makeNode('skill-1', 'skill', { skillId: '前端技术文档编写指南', skillName: '前端技术文档编写指南' }),
+      makeNode('skill-1', 'skill', {
+        skillId: '前端技术文档编写指南',
+        skillName: '前端技术文档编写指南',
+      }),
       makeNode('output-1', 'aiOutput', { outputPath: 'docs/report.md' }),
     ]
     const edges = [
@@ -315,7 +397,9 @@ describe('导出物管理', () => {
       makeEdge('skill-1', 'code-1'),
       makeEdge('code-1', 'output-1'),
     ]
-    const { yaml, workflowPath } = buildSkillWorkflow(nodes, edges, { name: '技术文档工作流' })
+    const { yaml, workflowPath } = buildSkillWorkflow(nodes, edges, {
+      name: '技术文档工作流',
+    })
 
     // 路径：skills/<name>/SKILL.md
     expect(workflowPath).toBe('skills/技术文档工作流/SKILL.md')
@@ -328,10 +412,19 @@ describe('导出物管理', () => {
     expect(yaml).toContain('## 执行步骤')
     expect(yaml).toContain('用户输入 <prompt>')
     expect(yaml).toContain('取调用 /技术文档工作流 <prompt> 时的 prompt 内容')
+    // 静态输入不内联进 SKILL 正文，改为引用随全量导出落盘的文件（与 SKILL.md 同级）
+    expect(yaml).toContain('附加提示词：见inputs/user-input/')
+    expect(yaml).not.toContain('附加提示词：附加提示词')
 
     // 各节点按拓扑序映射为自然语言步骤，不产出 command/step/spec 结构
-    expect(yaml).toContain('使用你的 MCP 连接用户知识库检索：查询内容：最近发布计划')
-    expect(yaml).toContain('/path/to/singer-center')
+    expect(yaml).toContain(
+      '使用你的 MCP 连接用户知识库检索：查询内容：最近发布计划',
+    )
+    // 项目路径不内联：引用 urls.md 的「项目位置」段
+    expect(yaml).toContain(
+      '在项目（位置见 inputs/urls.md 的「项目位置」第 1 条）执行：分析项目代码',
+    )
+    expect(yaml).not.toContain('/path/to/singer-center')
     expect(yaml).toContain('使用技能「前端技术文档编写指南」')
     expect(yaml).toContain('最终产物输出保存到 docs/report.md')
     expect(yaml).not.toContain('command:')
@@ -339,13 +432,47 @@ describe('导出物管理', () => {
   })
 
   it('skill：用户提供 description 时使用其值，否则自动生成', () => {
-    const nodes = [makeNode('input-1', 'userInput', {}), makeNode('agent-1', 'agent', { instruction: '分析需求' })]
+    const nodes = [
+      makeNode('input-1', 'userInput', {}),
+      makeNode('agent-1', 'agent', { instruction: '分析需求' }),
+    ]
     const edges = [makeEdge('input-1', 'agent-1')]
     const auto = buildSkillWorkflow(nodes, edges, { name: 'demo' })
     expect(auto.yaml).toContain('用 /demo <prompt> 触发')
 
-    const custom = buildSkillWorkflow(nodes, edges, { name: 'demo', description: '用户自定义描述' })
+    const custom = buildSkillWorkflow(nodes, edges, {
+      name: 'demo',
+      description: '用户自定义描述',
+    })
     expect(custom.yaml).toContain('用户自定义描述')
     expect(custom.yaml).not.toContain('用 /demo <prompt> 触发')
+  })
+
+  it('skill：飞书读/写节点的 URL 不内联，改为引用 inputs/urls.md', () => {
+    const nodes = [
+      makeNode('input-1', 'userInput', {}),
+      makeNode('lark-read', 'lark', {
+        action: 'read',
+        url: 'https://x.feishu.cn/wiki/AAA',
+      }),
+      makeNode('lark-write', 'lark', {
+        action: 'write',
+        url: 'https://x.feishu.cn/wiki/BBB',
+      }),
+    ]
+    const edges = [
+      makeEdge('input-1', 'lark-read'),
+      makeEdge('lark-read', 'lark-write'),
+    ]
+    const { yaml } = buildSkillWorkflow(nodes, edges, { name: 'lark-demo' })
+
+    expect(yaml).toContain(
+      '读取飞书文档（URL 见 inputs/urls.md 的「Lark 文档（读取）」）',
+    )
+    expect(yaml).toContain(
+      '将产物写入飞书文档（URL 见 inputs/urls.md 的「Lark 文档（写入）」）',
+    )
+    expect(yaml).not.toContain('https://x.feishu.cn/wiki/AAA')
+    expect(yaml).not.toContain('https://x.feishu.cn/wiki/BBB')
   })
 })

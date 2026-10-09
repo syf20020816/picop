@@ -23,10 +23,13 @@ import {
   safeSegment,
   openSpecSchemaDir,
   specChangeDir,
+  skillDir,
+  URLS_ARTIFACT_PATH,
+  PROJECT_SECTION,
 } from './export-core.mjs'
 
-// re-export：zip 导出 API 经动态 import 从本模块取用
-export { openSpecSchemaDir, specChangeDir }
+// re-export：zip 导出 API / MCP 经动态 import 从本模块取用
+export { openSpecSchemaDir, specChangeDir, skillDir }
 
 /** 读取文件，不存在返回 null */
 async function readFileSafe(filePath) {
@@ -40,7 +43,7 @@ async function readFileSafe(filePath) {
 // ==================== userInput / agent 静态输入 ====================
 
 /** 收集 userInput / agent 节点的静态输入内容（label/prompt/files/urls） */
-async function collectUserInputs(nodes, larkUrls, baseDir) {
+async function collectUserInputs(nodes, larkUrls, projectRefs, baseDir) {
   const results = []
   const userUrls = []
 
@@ -87,17 +90,34 @@ async function collectUserInputs(nodes, larkUrls, baseDir) {
     })
   }
 
-  // URL 清单（Lark 引用 + 用户输入链接），有内容才生成
-  if (larkUrls.length > 0 || userUrls.length > 0) {
-    const lines = ['# 输入 URL 清单', '']
-    if (larkUrls.length > 0) {
-      lines.push(
-        '## Lark 文档（lark-cli 读取，见 skills/lark-cli/SKILL.md）',
-        '',
-      )
-      for (const ref of larkUrls) {
+  // 输入清单（Lark 读/写 URL + 项目位置 + 用户输入链接），有内容才生成
+  if (larkUrls.length > 0 || userUrls.length > 0 || projectRefs.length > 0) {
+    const lines = [
+      '# 输入清单',
+      '',
+      '> 复用说明：导出产物只引用本文件，替换本文件的 URL / 项目位置即可复用同一套流程，无需重新导出。',
+      '',
+    ]
+    const larkItem = (ref) =>
+      `- ${ref.title}${ref.kind === 'template' ? '（模板）' : ''}：${ref.url}`
+    const readRefs = larkUrls.filter((r) => r.direction !== 'write')
+    const writeRefs = larkUrls.filter((r) => r.direction === 'write')
+
+    if (readRefs.length > 0) {
+      lines.push('## Lark 文档（读取，使用 lark-cli）', '')
+      for (const ref of readRefs) lines.push(larkItem(ref))
+      lines.push('')
+    }
+    if (writeRefs.length > 0) {
+      lines.push('## Lark 文档（写入）', '')
+      for (const ref of writeRefs) lines.push(larkItem(ref))
+      lines.push('')
+    }
+    if (projectRefs.length > 0) {
+      lines.push(`## ${PROJECT_SECTION}`, '')
+      for (const ref of projectRefs) {
         lines.push(
-          `- [${ref.title}](${ref.url})${ref.kind === 'template' ? '（模板）' : ''}`,
+          `- ${ref.title}：${ref.path}${ref.branch ? `（分支 ${ref.branch}）` : ''}`,
         )
       }
       lines.push('')
@@ -108,7 +128,7 @@ async function collectUserInputs(nodes, larkUrls, baseDir) {
       lines.push('')
     }
     results.push({
-      path: 'inputs/urls.md',
+      path: URLS_ARTIFACT_PATH,
       content: lines.join('\n'),
       source: 'urls',
     })
@@ -261,7 +281,12 @@ export async function collectArtifacts(nodes, opts = {}) {
 
   const results = []
   results.push(
-    ...(await collectUserInputs(plan.userInputNodes, plan.larkRefs, baseDir)),
+    ...(await collectUserInputs(
+      plan.userInputNodes,
+      plan.larkRefs,
+      plan.projectRefs,
+      baseDir,
+    )),
   )
   results.push(...collectBMadAgents(plan.bmadNodes))
   results.push(...collectLarkRefs(plan.larkRefs))

@@ -87,6 +87,15 @@ const EDGE_TYPES = {
   nodeEdge: NodeEdge,
 }
 
+/** 焦点在可编辑元素（输入框 / 文本域 / 下拉 / contenteditable 富文本）内时，交由系统原生复制粘贴 */
+function isEditableTarget(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null
+  if (!el || typeof el.closest !== 'function') return false
+  const tag = el.tagName?.toLowerCase()
+  if (tag === 'input' || tag === 'textarea' || tag === 'select') return true
+  return el.isContentEditable || Boolean(el.closest('[contenteditable]'))
+}
+
 export function Flow() {
   const nodes = useNodeStore((s) => s.nodes)
   const edges = useNodeStore((s) => s.edges)
@@ -113,6 +122,9 @@ export function Flow() {
       const mod = e.metaKey || e.ctrlKey
       const key = e.key.toLowerCase()
       if (!mod || (key !== 'c' && key !== 'v')) return
+
+      // 输入框/富文本内不拦截，保留系统原生的文字复制粘贴
+      if (isEditableTarget(e.target)) return
 
       const selectedNodes = useNodeStore
         .getState()

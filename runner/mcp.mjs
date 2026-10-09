@@ -264,7 +264,10 @@ async function exportWorkflow({
             : ''
 
     for (const item of collected) {
-      await writeFile(prefix + item.path, item.content)
+      // SKILL 形态：被引用的其他技能是独立技能，落盘为 `skills/<id>/SKILL.md`，
+      // 与主技能目录同级，而不是嵌套进主技能目录内部
+      const nested = fmt === 'skill' && item.path.startsWith('skills/')
+      await writeFile((nested ? '' : prefix) + item.path, item.content)
       if (item.warning) logs.push(`警告: ${item.warning}`)
     }
 

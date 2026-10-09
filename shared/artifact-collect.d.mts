@@ -7,7 +7,7 @@
 import type { Node } from '@xyflow/react'
 
 // re-export：zip 导出 API 经动态 import 从本模块取用
-export { openSpecSchemaDir, specChangeDir } from './export-core.mjs'
+export { openSpecSchemaDir, specChangeDir, skillDir } from './export-core.mjs'
 
 /** 导出包内的一项输入物 */
 export interface CollectedArtifact {

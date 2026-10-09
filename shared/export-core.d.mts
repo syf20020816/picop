@@ -26,9 +26,27 @@ export interface ExportResult {
 }
 
 export interface LarkRef {
+  /** 来源节点 id（用于把节点映射到 urls.md 中的段内序号） */
+  nodeId: string
   url: string
   kind: 'doc' | 'template'
+  /** 该飞书文档在流程中的用途：读取 or 写入（写入的是产物投递目标） */
+  direction: 'read' | 'write'
   title: string
+  /** 在 urls.md「Lark 文档（读取）」段中的序号（0 基），仅 direction=read 时存在 */
+  readIndex?: number
+  /** 在 urls.md「Lark 文档（写入）」段中的序号（0 基），仅 direction=write 时存在 */
+  writeIndex?: number
+}
+
+export interface ProjectRef {
+  /** 来源节点 id（用于把节点映射到 urls.md「项目位置」段内序号） */
+  nodeId: string
+  path: string
+  branch?: string
+  title: string
+  /** 在 urls.md「项目位置」段中的序号（0 基） */
+  index: number
 }
 
 export interface CollectablePlan {
@@ -37,7 +55,11 @@ export interface CollectablePlan {
   bmadNodes: Node[]
   memoryNodes: Node[]
   larkRefs: LarkRef[]
+  projectRefs: ProjectRef[]
 }
+
+export declare const URLS_ARTIFACT_PATH: string
+export declare const PROJECT_SECTION: string
 
 export declare const NodeTypes: {
   USER_INPUT: 'userInput'
@@ -107,5 +129,8 @@ export declare function buildWorkflow(
   options?: ExportOptions,
 ): ExportResult
 
-export declare function autoSkillDescription(name: string, nodes: Node[]): string
+export declare function autoSkillDescription(
+  name: string,
+  nodes: Node[],
+): string
 export declare function listCollectableArtifacts(nodes: Node[]): CollectablePlan
