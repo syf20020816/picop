@@ -10,13 +10,14 @@ export interface PinNodeProps {
 }
 
 export const PinNode = ({ nodeId, nodeType, title }: PinNodeProps) => {
-  const pipelineContext = useNodeStore((state) => state.pipelineContext)
-  const pinnedNodes = useNodeStore((state) => state.pinnedNodes)
   const pinNode = useNodeStore((state) => state.pinNode)
   const unpinNode = useNodeStore((state) => state.unpinNode)
-
-  const isPinned = nodeId in pinnedNodes
-  const hasOutput = nodeId in pipelineContext.nodeOutputs
+  // 只订阅布尔结果，避免订阅 pipelineContext / pinnedNodes 对象引用，
+  // 防止拖拽或状态更新时每个节点的 PinNode 都重渲染。
+  const isPinned = useNodeStore((state) => nodeId in state.pinnedNodes)
+  const hasOutput = useNodeStore(
+    (state) => nodeId in state.pipelineContext.nodeOutputs,
+  )
 
   const handlePin = async (e: React.MouseEvent) => {
     e.stopPropagation()

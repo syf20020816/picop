@@ -1,6 +1,7 @@
 import { useNodeStore } from '#/store/node'
 import { NodeTypes } from '#/types'
 import { useEffect, useState } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import { Typography, Tag, Input, Space, Button, Timeline, Card, Descriptions } from 'antd'
 import type { LogEntry } from '#/types/engine'
 import { CodeEditor } from '#/components/file-editor/editor'
@@ -20,8 +21,24 @@ const levelColorMap: Record<LogEntry['level'], string> = {
  */
 export const ExecutionResult = () => {
   const pipelineContext = useNodeStore((state) => state.pipelineContext)
-  const nodes = useNodeStore((state) => state.nodes)
   const resumeFrom = useNodeStore((state) => state.resumeFrom)
+  // 只订阅 {nodeId: type/title} 字符串映射：拖拽时 nodes 数组每帧变化，
+  // 但映射的字符串值不变，经 useShallow 浅比较跳过重渲染
+  const nodeTypeMap = useNodeStore(
+    useShallow((state) =>
+      Object.fromEntries(state.nodes.map((n) => [n.id, n.type as string])),
+    ),
+  )
+  const nodeTitleMap = useNodeStore(
+    useShallow((state) =>
+      Object.fromEntries(
+        state.nodes.map((n) => [
+          n.id,
+          typeof n.data.title === 'string' ? n.data.title : '',
+        ]),
+      ),
+    ),
+  )
   const { nodeOutputs, globalStatus, logs } = pipelineContext
 
   const [result, setResult] = useState('')
@@ -80,34 +97,21 @@ export const ExecutionResult = () => {
     }
 
     // 优先找 AI_OUTPUT 类型节点
-    const aiOutputNode = nodes.find(
-      (n) =>
-        n.type === NodeTypes.AI_OUTPUT &&
-        nodeOutputs[n.id] !== undefined,
+    const aiOutputId = executedNodeIds.find(
+      (id) => nodeTypeMap[id] === NodeTypes.AI_OUTPUT,
     )
 
-    if (aiOutputNode) {
-      const output = nodeOutputs[aiOutputNode.id]
-      const title =
-        typeof aiOutputNode.data.title === 'string'
-          ? aiOutputNode.data.title
-          : 'AI 输出'
-      setSourceLabel(title)
-      setResult(formatOutput(output))
+    if (aiOutputId) {
+      setSourceLabel(nodeTitleMap[aiOutputId] || 'AI 输出')
+      setResult(formatOutput(nodeOutputs[aiOutputId]))
       return
     }
 
     // 否则取最后执行的节点
     const lastNodeId = executedNodeIds[executedNodeIds.length - 1]
-    const lastNode = nodes.find((n) => n.id === lastNodeId)
-    const output = nodeOutputs[lastNodeId]
-    const title =
-      lastNode && typeof lastNode.data.title === 'string'
-        ? lastNode.data.title
-        : '最后节点'
-    setSourceLabel(title)
-    setResult(formatOutput(output))
-  }, [nodeOutputs, nodes])
+    setSourceLabel(nodeTitleMap[lastNodeId] || '最后节点')
+    setResult(formatOutput(nodeOutputs[lastNodeId]))
+  }, [nodeOutputs, nodeTypeMap, nodeTitleMap])
 
   const statusColorMap: Record<string, string> = {
     idle: 'default',

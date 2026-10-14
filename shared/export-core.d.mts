@@ -16,6 +16,15 @@ export interface ExportOptions {
   mergeParallel?: boolean
   /** SKILL 导出：frontmatter description（留空则按节点自动生成） */
   description?: string
+  /** 全量导出：系统提示词以 path 引用（inputs/prompts/*.md）而非内联 */
+  full?: boolean
+  /** 节点系统提示词内容（key = prompts/ 下文件名），非全量导出时内联 */
+  systemPrompts?: Record<string, string>
+  /**
+   * 单次执行（默认 true）：自包含结构，输入物挂在主文件目录下
+   * false：.agent 固定根目录，prompts / memory / bmad 提升到与 skills 同层便于复用
+   */
+  singleRun?: boolean
 }
 
 export interface ExportResult {
@@ -56,10 +65,37 @@ export interface CollectablePlan {
   memoryNodes: Node[]
   larkRefs: LarkRef[]
   projectRefs: ProjectRef[]
+  /** 需要落盘的系统提示词文件名（prompts/ 下） */
+  systemPromptFiles: string[]
 }
 
 export declare const URLS_ARTIFACT_PATH: string
 export declare const PROJECT_SECTION: string
+export declare const SYSTEM_PROMPT_DIR: string
+export declare const AGENT_ROOT: string
+
+/** 导出目录布局（决定落盘位置与引用前缀） */
+export interface ExportLayout {
+  singleRun: boolean
+  slug: string
+  /** 主文件与 workflow 专属输入物（urls / user-input）所在目录 */
+  workflowDir: string
+  /** prompts / memory / bmad 所在目录 */
+  sharedDir: string
+  /** 被引用的其他技能所在目录 */
+  skillsDir: string
+  /** workflow 专属输入物的引用前缀 */
+  wfRef: string
+  /** 共享输入物的引用前缀 */
+  sharedRef: string
+}
+
+export declare function joinPath(dir: string, rel: string): string
+export declare function resolveLayout(
+  format: ExportTarget | string | undefined,
+  workflowName: string | undefined,
+  singleRun?: boolean,
+): ExportLayout
 
 export declare const NodeTypes: {
   USER_INPUT: 'userInput'
@@ -98,9 +134,23 @@ export declare function userInputArtifactPath(node: Node): string
 export declare function skillArtifactPath(skillId: string): string
 export declare function bmadArtifactPath(node: Node): string
 export declare function memoryArtifactPath(node: Node): string
-export declare function openSpecSchemaDir(workflowName: string): string
-export declare function specChangeDir(workflowName: string): string
-export declare function skillDir(workflowName: string): string
+export declare function openSpecSchemaDir(
+  workflowName: string,
+  singleRun?: boolean,
+): string
+export declare function specChangeDir(
+  workflowName: string,
+  singleRun?: boolean,
+): string
+export declare function skillDir(
+  workflowName: string,
+  singleRun?: boolean,
+): string
+export declare function systemPromptFile(node: Node): string | undefined
+export declare function systemPromptArtifactPath(
+  file: string,
+  singleRun?: boolean,
+): string
 
 export declare function buildSpecKitWorkflow(
   nodes: Node[],

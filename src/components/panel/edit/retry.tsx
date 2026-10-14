@@ -7,6 +7,7 @@ import type { DynEditKVRow } from './item'
 import { Select, Divider, Typography, InputNumber, Tag } from 'antd'
 import { NodeBuilder } from '#/types/builder'
 import { useEffect } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 
 const { Text } = Typography
 
@@ -16,20 +17,27 @@ const d = (
 
 export const EditRetry = () => {
   const currentNode = useNodeStore((state) => state.currentNode) as NodeProps<NRetry>
-  const nodes = useNodeStore((state) => state.nodes)
-  const edges = useNodeStore((state) => state.edges)
   const patchCurrentNode = useNodeStore((state) => state.patchCurrentNode)
   const addConnectNode = useNodeStore((state) => state.addConnectNode)
 
-  // 查找当前 retryNode 连出的 AgentNode（AI 判断模式）
-  const agentEdge = edges.find(
-    (e) => e.source === currentNode.id && nodes.find((n) => n.id === e.target)?.type === NodeTypes.AGENT,
+  // 只订阅 AI 判断分支的派生原始值：拖拽时 nodes/edges 每帧变化但值不变，
+  // 经 useShallow 浅比较跳过重渲染，避免编辑面板跟着拖拽卡顿
+  const { hasAgentNode, agentTitle } = useNodeStore(
+    useShallow((state) => {
+      const e = state.edges.find(
+        (edge) =>
+          edge.source === currentNode.id &&
+          state.nodes.find((n) => n.id === edge.target)?.type ===
+            NodeTypes.AGENT,
+      )
+      const n = e ? state.nodes.find((x) => x.id === e.target) : null
+      return { hasAgentNode: !!n, agentTitle: String(n?.data?.title || '') }
+    }),
   )
-  const agentNode = agentEdge ? nodes.find((n) => n.id === agentEdge.target) : null
 
   // 切换到 AI 模式时，自动创建 AgentNode
   useEffect(() => {
-    if (currentNode.data.judgmentMode === 'ai' && !agentNode) {
+    if (currentNode.data.judgmentMode === 'ai' && !hasAgentNode) {
       const pos = currentNode as any
       const newNode = NodeBuilder.agent({
         x: pos.positionAbsoluteX ?? pos.position?.x ?? 0,
@@ -138,10 +146,10 @@ export const EditRetry = () => {
           <Divider style={{ margin: '12px 0' }} />
           <div className="line">
             <Text>AI 判断</Text>
-            {agentNode ? (
+            {hasAgentNode ? (
               <div style={{ marginTop: 4 }}>
                 <Tag color="purple" style={{ fontSize: 10 }}>
-                  {String(agentNode.data.title || '')}
+                  {agentTitle}
                 </Tag>
                 <Text type="secondary" style={{ fontSize: 10, display: 'block', marginTop: 2 }}>
                   已连接 AgentNode，AI 将自动判断是否需要重试

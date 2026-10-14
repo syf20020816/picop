@@ -9,6 +9,9 @@ export {
   collectArtifacts,
   openSpecSchemaDir,
   specChangeDir,
+  resolveLayout,
+  joinPath,
+  AGENT_ROOT,
 } from '../../shared/artifact-collect.mjs'
 
 export interface CollectedArtifact {
@@ -20,4 +23,15 @@ export interface CollectedArtifact {
   source: string
   /** 收集过程中的警告（不影响导出，写入 manifest 日志） */
   warning?: string
+}
+
+export interface CollectOptions {
+  /** Skill / Memory 文件所在的运行数据根目录 */
+  baseDir?: string
+  /** 导出格式（决定目录布局）：skill / openspec / spec / speckit */
+  format?: string
+  /** 工作流名称（决定 skill / 变更目录名） */
+  name?: string
+  /** 单次执行（默认 true）：自包含结构；false：.agent 共享结构 */
+  singleRun?: boolean
 }

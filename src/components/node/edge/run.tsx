@@ -9,10 +9,13 @@ export interface RunNodeProps {
 
 export const RunNode = ({ nodeId }: RunNodeProps) => {
   const runFrom = useNodeStore((state) => state.runFrom)
-  const pipelineContext = useNodeStore((state) => state.pipelineContext)
-  const isRunning =
-    pipelineContext.currentNodeId === nodeId &&
-    pipelineContext.globalStatus === 'running'
+  // 只订阅布尔结果，避免订阅 pipelineContext 对象：否则执行状态更新时
+  // 每个节点的 RunNode 都会重渲染。
+  const isRunning = useNodeStore(
+    (state) =>
+      state.pipelineContext.currentNodeId === nodeId &&
+      state.pipelineContext.globalStatus === 'running',
+  )
 
   return (
     <Tooltip title={isRunning ? '执行中...' : '从此节点开始执行'}>

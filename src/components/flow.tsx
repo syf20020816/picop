@@ -87,6 +87,15 @@ const EDGE_TYPES = {
   nodeEdge: NodeEdge,
 }
 
+// 右键菜单 trigger 常量：避免 Flow 每次渲染创建新数组导致子组件 props 变化
+const CONTEXT_MENU_TRIGGER: ('click' | 'contextMenu' | 'hover')[] = [
+  'contextMenu',
+]
+
+// MiniMap 节点颜色回调提升为模块级：拖拽每帧渲染 MiniMap 时保持 props 稳定
+const minimapNodeColor = (node: Node) =>
+  NODE_COLORS[(node.type ?? 'userInput') as NodeType] || NODE_COLORS.userInput
+
 /** 焦点在可编辑元素（输入框 / 文本域 / 下拉 / contenteditable 富文本）内时，交由系统原生复制粘贴 */
 function isEditableTarget(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null
@@ -229,7 +238,7 @@ export function Flow() {
   )
 
   return (
-    <AddNodeBtn trigger={['contextMenu']}>
+    <AddNodeBtn trigger={CONTEXT_MENU_TRIGGER}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -254,10 +263,7 @@ export function Flow() {
           offsetScale={10}
           style={{ height: 120, width: 140, bottom: 36 }}
           position="bottom-left"
-          nodeColor={(node) =>
-            NODE_COLORS[(node.type ?? 'userInput') as NodeType] ||
-            NODE_COLORS.userInput
-          }
+          nodeColor={minimapNodeColor}
         />
         {panels}
       </ReactFlow>

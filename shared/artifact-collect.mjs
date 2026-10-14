@@ -26,10 +26,21 @@ import {
   skillDir,
   URLS_ARTIFACT_PATH,
   PROJECT_SECTION,
+  systemPromptArtifactPath,
+  resolveLayout,
+  joinPath,
+  AGENT_ROOT,
 } from './export-core.mjs'
 
 // re-export：zip 导出 API / MCP 经动态 import 从本模块取用
-export { openSpecSchemaDir, specChangeDir, skillDir }
+export {
+  openSpecSchemaDir,
+  specChangeDir,
+  skillDir,
+  resolveLayout,
+  joinPath,
+  AGENT_ROOT,
+}
 
 /** 读取文件，不存在返回 null */
 async function readFileSafe(filePath) {
@@ -43,7 +54,13 @@ async function readFileSafe(filePath) {
 // ==================== userInput / agent 静态输入 ====================
 
 /** 收集 userInput / agent 节点的静态输入内容（label/prompt/files/urls） */
-async function collectUserInputs(nodes, larkUrls, projectRefs, baseDir) {
+async function collectUserInputs(
+  nodes,
+  larkUrls,
+  projectRefs,
+  baseDir,
+  layout,
+) {
   const results = []
   const userUrls = []
 
@@ -63,13 +80,16 @@ async function collectUserInputs(nodes, larkUrls, projectRefs, baseDir) {
       if (file && typeof file === 'object' && typeof file.text === 'function') {
         // 仅前端直调（非 JSON 请求）时可读到内容，后端通常走不到
         results.push({
-          path: `${filesDir}/${safeSegment(file.name, `file-${i + 1}`)}`,
+          path: joinPath(
+            layout.workflowDir,
+            `${filesDir}/${safeSegment(file.name, `file-${i + 1}`)}`,
+          ),
           content: `<!-- 文件内容见运行时上传，此处为占位 -->\n`,
           source: `user-input-file:${node.id}`,
         })
       } else {
         results.push({
-          path: `${filesDir}/file-${i + 1}.md`,
+          path: joinPath(layout.workflowDir, `${filesDir}/file-${i + 1}.md`),
           content: `<!-- 文件内容未持久化，无法随导出携带 -->\n`,
           source: `user-input-file:${node.id}`,
           warning: `节点 "${data.title || node.id}" 的第 ${i + 1} 个上传文件内容未持久化，导出为占位`,
@@ -84,7 +104,7 @@ async function collectUserInputs(nodes, larkUrls, projectRefs, baseDir) {
     }
 
     results.push({
-      path: mdPath,
+      path: joinPath(layout.workflowDir, mdPath),
       content: parts.join('\n\n') + '\n',
       source: `user-input:${node.id}`,
     })
@@ -128,7 +148,7 @@ async function collectUserInputs(nodes, larkUrls, projectRefs, baseDir) {
       lines.push('')
     }
     results.push({
-      path: URLS_ARTIFACT_PATH,
+      path: joinPath(layout.workflowDir, URLS_ARTIFACT_PATH),
       content: lines.join('\n'),
       source: 'urls',
     })
@@ -140,13 +160,13 @@ async function collectUserInputs(nodes, larkUrls, projectRefs, baseDir) {
 // ==================== Skill ====================
 
 /** 收集所有 Skill 文件内容（磁盘统一为 SKILL.md，大小写敏感系统同样命中） */
-async function collectSkills(ids, baseDir) {
+async function collectSkills(ids, baseDir, layout) {
   const results = []
   for (const id of ids) {
     const zipPath = skillArtifactPath(id)
     if (zipPath.includes('..')) {
       results.push({
-        path: zipPath,
+        path: joinPath(layout.skillsDir, zipPath),
         content: `<!-- 非法 skillId: ${id} -->\n`,
         source: `skill:${id}`,
         warning: `skillId 含非法路径段: ${id}`,
@@ -162,10 +182,14 @@ async function collectSkills(ids, baseDir) {
     )
     const content = await readFileSafe(diskPath)
     if (content !== null) {
-      results.push({ path: zipPath, content, source: `skill:${id}` })
+      results.push({
+        path: joinPath(layout.skillsDir, zipPath),
+        content,
+        source: `skill:${id}`,
+      })
     } else {
       results.push({
-        path: zipPath,
+        path: joinPath(layout.skillsDir, zipPath),
         content: `<!-- SKILL ${id} 文件未找到 -->\n`,
         source: `skill:${id}`,
         warning: `未找到 ${diskPath}`,
@@ -178,7 +202,7 @@ async function collectSkills(ids, baseDir) {
 // ==================== BMad 角色 ====================
 
 /** 从节点 data 生成 BMad 角色定义文件 */
-function collectBMadAgents(nodes) {
+function collectBMadAgents(nodes, layout) {
   const results = []
   for (const node of nodes) {
     const data = node.data || {}
@@ -189,7 +213,7 @@ function collectBMadAgents(nodes) {
       parts.push(`## 角色职责\n\n${data.roleDescription}`)
     if (data.systemPrompt) parts.push(`## 系统提示词\n\n${data.systemPrompt}`)
     results.push({
-      path: bmadArtifactPath(node),
+      path: joinPath(layout.sharedDir, bmadArtifactPath(node)),
       content: parts.join('\n\n') + '\n',
       source: `bmad:${node.id}`,
     })
@@ -200,7 +224,7 @@ function collectBMadAgents(nodes) {
 // ==================== Memory ====================
 
 /** 收集 memory 文件 */
-async function collectMemories(nodes, baseDir) {
+async function collectMemories(nodes, baseDir, layout) {
   const results = []
   const seen = new Set()
   for (const node of nodes) {
@@ -209,7 +233,7 @@ async function collectMemories(nodes, baseDir) {
     seen.add(zipPath)
     if (zipPath.includes('..')) {
       results.push({
-        path: 'memory/memory.md',
+        path: joinPath(layout.sharedDir, 'memory/memory.md'),
         content: `<!-- 非法 memoryPath，回退默认 -->\n`,
         source: `memory:${node.id}`,
         warning: `memoryPath 含非法路径段`,
@@ -221,10 +245,14 @@ async function collectMemories(nodes, baseDir) {
         ? await readFileSafe(path.join(baseDir, 'memory', 'memory.md'))
         : await readFileSafe(path.resolve(baseDir, zipPath))
     if (content !== null) {
-      results.push({ path: zipPath, content, source: `memory:${node.id}` })
+      results.push({
+        path: joinPath(layout.sharedDir, zipPath),
+        content,
+        source: `memory:${node.id}`,
+      })
     } else {
       results.push({
-        path: zipPath,
+        path: joinPath(layout.sharedDir, zipPath),
         content: `<!-- memory 文件未找到: ${zipPath} -->\n`,
         source: `memory:${node.id}`,
         warning: `未找到 ${zipPath}`,
@@ -256,27 +284,59 @@ lark-cli docs +fetch --doc "<文档URL>" --doc-format markdown --jq '.data.docum
 `
 
 /** Lark 文档引用模式：导出 URL 清单（在 collectUserInputs 中合并生成）+ lark-cli 技能文件 */
-function collectLarkRefs(refs) {
+function collectLarkRefs(refs, layout) {
   if (refs.length === 0) return []
   return [
     {
-      path: 'skills/lark-cli/SKILL.md',
+      path: joinPath(layout.skillsDir, 'skills/lark-cli/SKILL.md'),
       content: LARK_CLI_SKILL,
       source: 'lark-cli-skill',
     },
   ]
 }
 
+// ==================== 系统提示词 ====================
+
+/**
+ * 收集节点系统提示词文件真实内容
+ * 落盘位：prompts/<file>（复用时与 skills 同级）或 inputs/prompts/<file>（单次执行自包含）
+ */
+async function collectSystemPrompts(files, baseDir, layout) {
+  const results = []
+  for (const file of files) {
+    const content = await readFileSafe(path.join(baseDir, 'prompts', file))
+    const rel = systemPromptArtifactPath(file, layout.singleRun)
+    if (content === null) {
+      results.push({
+        path: joinPath(layout.sharedDir, rel),
+        content: `<!-- 未找到系统提示词文件 prompts/${file} -->\n`,
+        source: `system-prompt:${file}`,
+        warning: `系统提示词 prompts/${file} 未找到，导出为占位`,
+      })
+    } else {
+      results.push({
+        path: joinPath(layout.sharedDir, rel),
+        content,
+        source: `system-prompt:${file}`,
+      })
+    }
+  }
+  return results
+}
+
 // ==================== 汇总入口 ====================
 
 /**
- * 收集所有需要真实内容的输入物
+ * 收集所有需要真实内容的输入物（路径已按导出目录布局落位）
  * @param {Array} nodes 工作流节点
- * @param {{ baseDir?: string }} [opts] baseDir：Skill/Memory 文件所在的运行数据根目录
+ * @param {{ baseDir?: string, format?: string, name?: string, singleRun?: boolean }} [opts]
+ *   baseDir：Skill/Memory 文件所在的运行数据根目录
+ *   format/name/singleRun：决定导出目录布局（默认 singleRun 自包含结构）
  * @returns {Promise<Array<{ path: string, content: string, source: string, warning?: string }>>}
  */
 export async function collectArtifacts(nodes, opts = {}) {
   const baseDir = opts.baseDir || process.cwd()
+  const layout = resolveLayout(opts.format, opts.name, opts.singleRun)
   const plan = listCollectableArtifacts(nodes)
 
   const results = []
@@ -286,12 +346,16 @@ export async function collectArtifacts(nodes, opts = {}) {
       plan.larkRefs,
       plan.projectRefs,
       baseDir,
+      layout,
     )),
   )
-  results.push(...collectBMadAgents(plan.bmadNodes))
-  results.push(...collectLarkRefs(plan.larkRefs))
-  results.push(...(await collectSkills(plan.skills, baseDir)))
-  results.push(...(await collectMemories(plan.memoryNodes, baseDir)))
+  results.push(...collectBMadAgents(plan.bmadNodes, layout))
+  results.push(...collectLarkRefs(plan.larkRefs, layout))
+  results.push(...(await collectSkills(plan.skills, baseDir, layout)))
+  results.push(...(await collectMemories(plan.memoryNodes, baseDir, layout)))
+  results.push(
+    ...(await collectSystemPrompts(plan.systemPromptFiles, baseDir, layout)),
+  )
 
   return results
 }

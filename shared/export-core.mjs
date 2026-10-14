@@ -213,6 +213,57 @@ function larkRefIndexMap(nodes) {
   return map
 }
 
+// === 导出目录布局 ===
+
+/** 取消「单次执行」时的共享根目录：prompts / memory / bmad / skills 提升到此，便于跨工作流复用 */
+export const AGENT_ROOT = '.agent'
+
+/** 拼接引用路径：dir 为空时退回相对路径本身 */
+export function joinPath(dir, rel) {
+  return dir ? `${dir}/${rel}` : rel
+}
+
+/**
+ * 导出目录布局（决定主文件 / workflow 专属输入物 / 共享输入物的落盘位置与引用前缀）
+ * - singleRun（默认）：全部挂在 workflowDir 下，自包含，便于单次执行
+ * - 非 singleRun：prompts / memory / bmad / skills 提升到 .agent 顶层共享
+ * @returns {{ singleRun:boolean, slug:string, workflowDir:string, sharedDir:string,
+ *            skillsDir:string, wfRef:string, sharedRef:string }}
+ *   workflowDir：主文件与 workflow 专属输入物（urls / user-input）所在目录
+ *   sharedDir：prompts / memory / bmad 所在目录
+ *   skillsDir：被引用的其他技能所在目录（skill 形态单次执行时为导出根，即与主技能同级）
+ *   wfRef / sharedRef：引用前缀（单次执行保持既有相对写法，非单次执行统一从导出根起算）
+ */
+export function resolveLayout(format, workflowName, singleRun) {
+  const slug = toStepId(workflowName, 'picop-workflow')
+  const skillSlug = toStepId(workflowName, 'picop-skill')
+  const shared = singleRun === false
+  const base =
+    format === 'openspec'
+      ? `openspec/schemas/${slug}`
+      : format === 'spec'
+        ? `spec/changes/${slug}`
+        : format === 'skill'
+          ? `skills/${skillSlug}`
+          : ''
+  const workflowDir = shared
+    ? base
+      ? `${AGENT_ROOT}/${base}`
+      : AGENT_ROOT
+    : base
+  // 单次执行：skill 用文件相对写法（前缀为空），其余用变更目录前缀；非单次执行：从导出根起算
+  const wfRef = shared ? workflowDir : format === 'skill' ? '' : base
+  return {
+    singleRun: !shared,
+    slug,
+    workflowDir,
+    sharedDir: shared ? AGENT_ROOT : base,
+    skillsDir: shared ? AGENT_ROOT : format === 'skill' ? '' : base,
+    wfRef,
+    sharedRef: shared ? AGENT_ROOT : wfRef,
+  }
+}
+
 /** urls.md 中某条飞书文档的文本引用（给 AI agent 读，按方向 + 段内序号） */
 function urlsMdRef(direction, index, schemaDir) {
   const section =
@@ -222,9 +273,9 @@ function urlsMdRef(direction, index, schemaDir) {
 }
 
 /** urls.md 中某条飞书文档的 shell 取值表达式（运行时读取，避免把 URL 内联进脚本） */
-function urlsMdShellRef(direction, index) {
+function urlsMdShellRef(direction, index, wfRef) {
   const section = direction === 'write' ? 'Lark 文档（写入' : 'Lark 文档（读取'
-  return `"$(sed -n '/^## ${section}/,/^## /p' ${URLS_ARTIFACT_PATH} | grep -oE 'https?://[^ )]+' | sed -n '${index + 1}p')"`
+  return `"$(sed -n '/^## ${section}/,/^## /p' ${joinPath(wfRef, URLS_ARTIFACT_PATH)} | grep -oE 'https?://[^ )]+' | sed -n '${index + 1}p')"`
 }
 
 /** urls.md 中项目位置段落的标题（路径 + 分支集中于此，便于复用） */
@@ -243,6 +294,57 @@ function projectRefIndexMap(nodes) {
 function projectMdRef(index, schemaDir) {
   const prefix = schemaDir ? `${schemaDir}/` : ''
   return `${prefix}${URLS_ARTIFACT_PATH} 的「${PROJECT_SECTION}」第 ${index + 1} 条`
+}
+
+/** 节点系统提示词存放目录（全量导出时落盘于此，便于复用） */
+export const SYSTEM_PROMPT_DIR = 'inputs/prompts'
+
+/** 节点类型 → 默认系统提示词文件（prompts/ 下） */
+const NODE_SYSTEM_PROMPT_FILE = new Map([
+  [NodeTypes.CODE_AGENT, 'codeAgent.md'],
+  [NodeTypes.KEYWORD_AGENT, 'keywordAgent.md'],
+  [NodeTypes.TASK_PLANNER, 'taskPlanner.md'],
+  [NodeTypes.SELF_CHECK, 'selfCheck.md'],
+])
+
+/** 节点实际使用的系统提示词文件（codeAgent 按 mode 区分 analyze / batch） */
+export function systemPromptFile(node) {
+  if (node?.type === NodeTypes.CODE_AGENT) {
+    return node?.data?.mode === 'batch' ? 'codeBatch.md' : 'codeAgent.md'
+  }
+  return NODE_SYSTEM_PROMPT_FILE.get(node?.type)
+}
+
+/**
+ * 系统提示词在导出目录中的相对路径（相对所在共享根）：
+ * - 单次执行：挂在 inputs/prompts/ 下（与 workflow 专属输入物同级）
+ * - 非单次执行：提升为 prompts/<file>.md
+ */
+export function systemPromptArtifactPath(file, singleRun) {
+  return singleRun === false
+    ? `prompts/${file}`
+    : `${SYSTEM_PROMPT_DIR}/${file}`
+}
+
+/**
+ * 系统提示词片段：
+ * - 全量导出：以 path 引用共享目录下的 prompt 文件（真实文件随全量导出落盘，便于复用）
+ * - 非全量导出：内联提示词全文（调用方通过 options.systemPrompts 传入内容）
+ * 无对应文件或缺少内联内容时返回空串。
+ */
+function systemPromptBlock(node, layout, options) {
+  const file = systemPromptFile(node)
+  if (!file) return ''
+  if (options?.full) {
+    const ref = joinPath(
+      layout?.sharedRef,
+      systemPromptArtifactPath(file, layout?.singleRun),
+    )
+    return `**系统提示词：请严格遵循 ${ref} 中的系统提示词执行本步骤。**`
+  }
+  const inline = options?.systemPrompts?.[file]
+  if (!inline) return ''
+  return `## 系统提示词\n${String(inline).trim()}`
 }
 
 /** userInput / agent 节点静态输入内容的导出路径 */
@@ -355,7 +457,7 @@ function resolveSpeckitCommand(node) {
  * 输入类节点标注 specStep 时，构建运行时拉取步骤（shell）：
  * 把随 zip 导出的外部内容 / 静态内容落盘为对应 spec 产物文件。
  */
-function buildFetchStep(node, specStep, index, larkIdx) {
+function buildFetchStep(node, specStep, index, larkIdx, layout) {
   const data = node?.data || {}
   const fileName = SPEC_STEP_TO_ARTIFACT_FILE[specStep]
   if (!fileName) return null
@@ -366,7 +468,7 @@ function buildFetchStep(node, specStep, index, larkIdx) {
     case NodeTypes.LARK_TEMPLATE: {
       const idx = larkIdx?.get(node.id)
       if (!idx) return null
-      run = `lark-cli docs +fetch --doc ${urlsMdShellRef('read', idx.index)} --doc-format markdown --jq '.data.document.content' > ${fileName}`
+      run = `lark-cli docs +fetch --doc ${urlsMdShellRef('read', idx.index, layout?.wfRef)} --doc-format markdown --jq '.data.document.content' > ${fileName}`
       break
     }
     case NodeTypes.SKILL: {
@@ -375,20 +477,20 @@ function buildFetchStep(node, specStep, index, larkIdx) {
       if (isLocalSkillId(skillId)) {
         run = localSkillInstructionRun(fileName, data.skillName || skillId)
       } else {
-        run = `cp ${skillArtifactPath(skillId)} ${fileName}`
+        run = `cp ${joinPath(layout?.skillsDir, skillArtifactPath(skillId))} ${fileName}`
       }
       break
     }
     case NodeTypes.MEMORY: {
-      run = `cp ${memoryArtifactPath(node)} ${fileName}`
+      run = `cp ${joinPath(layout?.sharedRef, memoryArtifactPath(node))} ${fileName}`
       break
     }
     case NodeTypes.BMAD_AGENT: {
-      run = `cp ${bmadArtifactPath(node)} ${fileName}`
+      run = `cp ${joinPath(layout?.sharedRef, bmadArtifactPath(node))} ${fileName}`
       break
     }
     case NodeTypes.USER_INPUT: {
-      run = `cp ${userInputArtifactPath(node)} ${fileName}`
+      run = `cp ${joinPath(layout?.wfRef, userInputArtifactPath(node))} ${fileName}`
       break
     }
   }
@@ -451,7 +553,7 @@ function stepDescriptorKey(desc) {
 }
 
 /** 把节点解析为 workflow.yml step（可能产出多个：gate + fetch / deliver） */
-function nodeToSteps(node, index, larkIdx) {
+function nodeToSteps(node, index, larkIdx, layout) {
   const data = node?.data || {}
   const id = toStepId(data?.title || '', `step-${index + 1}`)
 
@@ -468,7 +570,7 @@ function nodeToSteps(node, index, larkIdx) {
     }
     const specStep = getSpecStep(node)
     if (node.type === NodeTypes.USER_INPUT && specStep) {
-      const fetch = buildFetchStep(node, specStep, index, larkIdx)
+      const fetch = buildFetchStep(node, specStep, index, larkIdx, layout)
       if (fetch) return [gate, fetch]
     }
     return [gate]
@@ -484,7 +586,7 @@ function nodeToSteps(node, index, larkIdx) {
       {
         id: toStepId(`deliver-${data?.title || ''}`, `deliver-${index + 1}`),
         type: 'shell',
-        run: `lark-cli docs +update --doc ${urlsMdShellRef('write', idx.index)} --command ${mode} --content @${fileName} --doc-format markdown`,
+        run: `lark-cli docs +update --doc ${urlsMdShellRef('write', idx.index, layout?.wfRef)} --command ${mode} --content @${fileName} --doc-format markdown`,
         timeout: 60,
       },
     ]
@@ -493,7 +595,7 @@ function nodeToSteps(node, index, larkIdx) {
   if (isInputNode(node)) {
     const specStep = getSpecStep(node)
     if (!specStep) return []
-    const fetch = buildFetchStep(node, specStep, index, larkIdx)
+    const fetch = buildFetchStep(node, specStep, index, larkIdx, layout)
     return fetch ? [fetch] : []
   }
 
@@ -625,6 +727,9 @@ export function buildSpecKitWorkflow(nodes, edges, options = {}) {
     .map((id) => nodes.find((n) => n.id === id))
     .filter(Boolean)
 
+  // 目录布局：决定各输入物的落盘位置与引用前缀（单次执行 / .agent 共享结构）
+  const layout = resolveLayout('speckit', options.name, options.singleRun)
+
   const providedSpecSteps = new Map()
   // 飞书节点 → urls.md 段内序号（shell 步骤运行时取值，URL 不内联）
   const larkIdx = larkRefIndexMap(nodes)
@@ -654,7 +759,7 @@ export function buildSpecKitWorkflow(nodes, edges, options = {}) {
       )
       return
     }
-    const nodeSteps = nodeToSteps(node, i, larkIdx)
+    const nodeSteps = nodeToSteps(node, i, larkIdx, layout)
     if (nodeSteps.length === 0) {
       if (!isInputNode(node) && !isLarkWriteNode(node)) skipped++
       return
@@ -709,7 +814,10 @@ export function buildSpecKitWorkflow(nodes, edges, options = {}) {
   const yaml =
     (notes.length > 0 ? notes.join('\n') + '\n' : '') +
     dump(doc, { lineWidth: -1, noRefs: true })
-  const workflowPath = `specify/workflows/${toStepId(name, 'picop-workflow')}/workflow.yml`
+  const workflowPath = joinPath(
+    layout.workflowDir,
+    `specify/workflows/${layout.slug}/workflow.yml`,
+  )
 
   return { yaml, workflowPath }
 }
@@ -717,17 +825,17 @@ export function buildSpecKitWorkflow(nodes, edges, options = {}) {
 // === OpenSpec / Spec 导出 ===
 
 /** OpenSpec schema 在 zip 内的目录（输入物与 schema.yaml 同级存放） */
-export function openSpecSchemaDir(workflowName) {
-  return `openspec/schemas/${toStepId(workflowName, 'picop-workflow')}`
+export function openSpecSchemaDir(workflowName, singleRun) {
+  return resolveLayout('openspec', workflowName, singleRun).workflowDir
 }
 
 /** Spec 导出：变更目录（md 产物与输入物所在层级） */
-export function specChangeDir(workflowName) {
-  return `spec/changes/${toStepId(workflowName, 'picop-workflow')}`
+export function specChangeDir(workflowName, singleRun) {
+  return resolveLayout('spec', workflowName, singleRun).workflowDir
 }
 
-/** 输入类节点 → OpenSpec artifact 的拉取指引（schemaDir 为输入物所在目录前缀） */
-function buildOpenSpecFetchInstruction(node, artifactId, schemaDir, larkIdx) {
+/** 输入类节点 → OpenSpec artifact 的拉取指引（layout 决定各输入物的引用前缀） */
+function buildOpenSpecFetchInstruction(node, artifactId, layout, larkIdx) {
   const data = node?.data || {}
   const file = `${artifactId}.md`
   switch (node.type) {
@@ -735,7 +843,7 @@ function buildOpenSpecFetchInstruction(node, artifactId, schemaDir, larkIdx) {
     case NodeTypes.LARK_TEMPLATE: {
       const idx = larkIdx?.get(node.id)
       if (!idx) return `Create the ${file} document for this change.`
-      return `使用 lark-cli 拉取 ${urlsMdRef(idx.direction, idx.index, schemaDir)} 的文档内容并原样保存为 ${file}，不要自行生成或改写内容。`
+      return `使用 lark-cli 拉取 ${urlsMdRef(idx.direction, idx.index, layout.wfRef)} 的文档内容并原样保存为 ${file}，不要自行生成或改写内容。`
     }
     case NodeTypes.SKILL: {
       const skillId = String(data.skillId || '')
@@ -743,14 +851,14 @@ function buildOpenSpecFetchInstruction(node, artifactId, schemaDir, larkIdx) {
       if (isLocalSkillId(skillId)) {
         return `使用你本机工具的本机技能「${data.skillName || skillId}」完成对应工作并保存为 ${file}。`
       }
-      return `读取导出的 ${schemaDir}/${skillArtifactPath(skillId)} 文件内容并保存为 ${file}。`
+      return `读取导出的 ${joinPath(layout.skillsDir, skillArtifactPath(skillId))} 文件内容并保存为 ${file}。`
     }
     case NodeTypes.MEMORY:
-      return `读取导出的 ${schemaDir}/${memoryArtifactPath(node)} 文件内容并保存为 ${file}。`
+      return `读取导出的 ${joinPath(layout.sharedRef, memoryArtifactPath(node))} 文件内容并保存为 ${file}。`
     case NodeTypes.BMAD_AGENT:
-      return `读取导出的 ${schemaDir}/${bmadArtifactPath(node)} 文件内容并保存为 ${file}。`
+      return `读取导出的 ${joinPath(layout.sharedRef, bmadArtifactPath(node))} 文件内容并保存为 ${file}。`
     case NodeTypes.USER_INPUT:
-      return `读取导出的 ${schemaDir}/${userInputArtifactPath(node)} 内容并整理保存为 ${file}。`
+      return `读取导出的 ${joinPath(layout.wfRef, userInputArtifactPath(node))} 内容并整理保存为 ${file}。`
     default:
       return `Create the ${file} document for this change.`
   }
@@ -773,7 +881,7 @@ function findNearestNode(start, neighbors, nodeMap, predicate) {
 }
 
 /** 输入类节点的导出物引用文本（供处理节点 instruction 的「输入上下文」引用） */
-function inputNodeRef(node, schemaDir, larkIdx) {
+function inputNodeRef(node, layout, larkIdx) {
   const data = node?.data || {}
   switch (node.type) {
     case NodeTypes.LARK:
@@ -782,24 +890,24 @@ function inputNodeRef(node, schemaDir, larkIdx) {
       const idx = larkIdx?.get(node.id)
       if (!idx) return undefined
       const title = data.title || `第 ${idx.index + 1} 条`
-      return `Lark 文档「${title}」：${urlsMdRef('read', idx.index, schemaDir)}`
+      return `Lark 文档「${title}」：${urlsMdRef('read', idx.index, layout.wfRef)}`
     }
     case NodeTypes.SKILL:
       if (!data.skillId) return undefined
       return isLocalSkillId(String(data.skillId))
         ? `本机工具技能「${data.skillName || data.skillId}」`
-        : `${schemaDir}/${skillArtifactPath(String(data.skillId))}（技能指引：${data.skillName || data.skillId}）`
+        : `${joinPath(layout.skillsDir, skillArtifactPath(String(data.skillId)))}（技能指引：${data.skillName || data.skillId}）`
     case NodeTypes.MEMORY:
-      return `${schemaDir}/${memoryArtifactPath(node)}（项目记忆）`
+      return `${joinPath(layout.sharedRef, memoryArtifactPath(node))}（项目记忆）`
     case NodeTypes.USER_INPUT:
-      return `${schemaDir}/${userInputArtifactPath(node)}（用户输入）`
+      return `${joinPath(layout.wfRef, userInputArtifactPath(node))}（用户输入）`
     default:
       return undefined
   }
 }
 
 /** 收集节点的全部上游输入类节点引用（沿边递归遍历祖先） */
-function collectUpstreamInputRefs(node, preds, nodeMap, schemaDir, larkIdx) {
+function collectUpstreamInputRefs(node, preds, nodeMap, layout, larkIdx) {
   const refs = []
   const visited = new Set([node.id])
   const queue = [...(preds.get(node.id) || [])]
@@ -809,7 +917,7 @@ function collectUpstreamInputRefs(node, preds, nodeMap, schemaDir, larkIdx) {
     visited.add(id)
     const n = nodeMap.get(id)
     if (!n) continue
-    const ref = inputNodeRef(n, schemaDir, larkIdx)
+    const ref = inputNodeRef(n, layout, larkIdx)
     if (ref) refs.push(ref)
     queue.push(...(preds.get(id) || []))
   }
@@ -820,12 +928,13 @@ function collectUpstreamInputRefs(node, preds, nodeMap, schemaDir, larkIdx) {
 function buildProcessingInstruction(
   node,
   artifactId,
-  schemaDir,
+  layout,
   preds,
   nodeMap,
   nodeDeliveries,
   larkIdx,
   projectIdx,
+  options,
 ) {
   const data = node?.data || {}
   const title = data?.title || artifactId
@@ -839,7 +948,7 @@ function buildProcessingInstruction(
       const idx = projectIdx?.get(node.id)
       if (idx !== undefined) {
         lines.push(
-          `项目路径：见 ${projectMdRef(idx, schemaDir)}，本地执行时直接读取项目源码。`,
+          `项目路径：见 ${projectMdRef(idx, layout.wfRef)}，本地执行时直接读取项目源码。`,
         )
       }
       if (data.appMapPath) {
@@ -899,27 +1008,27 @@ function buildProcessingInstruction(
       )
   }
 
-  const refs = collectUpstreamInputRefs(
-    node,
-    preds,
-    nodeMap,
-    schemaDir,
-    larkIdx,
-  )
+  const refs = collectUpstreamInputRefs(node, preds, nodeMap, layout, larkIdx)
   const embedded =
     data.input?.label ||
     data.input?.prompt ||
     data.input?.files?.length ||
     data.input?.urls?.length
   if (embedded)
-    refs.unshift(`${schemaDir}/${userInputArtifactPath(node)}（本节点输入）`)
+    refs.unshift(
+      `${joinPath(layout.wfRef, userInputArtifactPath(node))}（本节点输入）`,
+    )
   if (refs.length > 0) {
     parts.push('## 输入上下文\n' + refs.map((r) => `- ${r}`).join('\n'))
   }
 
+  // 系统提示词：全量导出走 path 引用，非全量导出内联全文
+  const sp = systemPromptBlock(node, layout, options)
+  if (sp) parts.push(sp)
+
   for (const d of nodeDeliveries) {
     parts.push(
-      `## 产物投递\n生成完成后使用 lark-cli 将 ${artifactId}.md 全文写入飞书文档（URL 见 ${urlsMdRef('write', d.index, schemaDir)}）：\n` +
+      `## 产物投递\n生成完成后使用 lark-cli 将 ${artifactId}.md 全文写入飞书文档（URL 见 ${urlsMdRef('write', d.index, layout.wfRef)}）：\n` +
         `lark-cli docs +update --doc "<上面 urls.md 中该条目的 URL>" --command ${d.mode} --content @${artifactId}.md --doc-format markdown`,
     )
   }
@@ -956,6 +1065,8 @@ function buildArtifactsPipeline(nodes, edges, config) {
   const larkIdx = larkRefIndexMap(nodes)
   // 项目位置 → urls.md 段内序号（只引用，不内联路径）
   const projectIdx = projectRefIndexMap(nodes)
+  // 目录布局：决定各输入物的落盘位置与引用前缀（单次执行 / .agent 共享结构）
+  const layout = config.layout
 
   // ---- 1. lark write 反向挂接：找上游最近处理节点，specStep 与投递指令转移给它 ----
   const mountSpecStep = new Map()
@@ -1017,7 +1128,7 @@ function buildArtifactsPipeline(nodes, edges, config) {
         instruction: buildOpenSpecFetchInstruction(
           node,
           artifactId,
-          config.schemaDir,
+          layout,
           larkIdx,
         ),
         requires: [],
@@ -1038,7 +1149,7 @@ function buildArtifactsPipeline(nodes, edges, config) {
         instruction: buildOpenSpecFetchInstruction(
           node,
           artifactId,
-          config.schemaDir,
+          layout,
           larkIdx,
         ),
         requires: [],
@@ -1070,12 +1181,13 @@ function buildArtifactsPipeline(nodes, edges, config) {
       instruction: buildProcessingInstruction(
         node,
         artifactId,
-        config.schemaDir,
+        layout,
         preds,
         nodeMap,
         deliveries.get(node.id) || [],
         larkIdx,
         projectIdx,
+        config.options,
       ),
       requires: [],
     }
@@ -1093,7 +1205,7 @@ function buildArtifactsPipeline(nodes, edges, config) {
     const data = node?.data || {}
     const roleHeader =
       `## 角色\n以 ${data.role || 'BMad Agent'}（${data.agentId || node.id}）身份执行：` +
-      `${data.roleDescription || data.systemPrompt || ''}\n完整角色定义见 ${config.schemaDir}/${bmadArtifactPath(node)}\n\n`
+      `${data.roleDescription || data.systemPrompt || ''}\n完整角色定义见 ${joinPath(layout.sharedRef, bmadArtifactPath(node))}\n\n`
     artifact.instruction = roleHeader + artifact.instruction
   }
 
@@ -1108,7 +1220,7 @@ function buildArtifactsPipeline(nodes, edges, config) {
       generates: `${id}.md`,
       description: `将上游产物写入飞书文档（${w.title}）`,
       instruction:
-        `读取上游产物文档全文，使用 lark-cli 写入飞书文档（URL 见 ${urlsMdRef('write', w.index, config.schemaDir)}）：\n` +
+        `读取上游产物文档全文，使用 lark-cli 写入飞书文档（URL 见 ${urlsMdRef('write', w.index, layout.wfRef)}）：\n` +
         `lark-cli docs +update --doc "<上面 urls.md 中该条目的 URL>" --command ${w.mode} --content @<上游产物文件> --doc-format markdown\n` +
         `本步骤不产生新内容，仅投递。`,
       requires: [],
@@ -1143,13 +1255,14 @@ function buildArtifactsPipeline(nodes, edges, config) {
 /** 平台节点/连线 → OpenSpec schema 文本与配套产物 */
 export function buildOpenSpecWorkflow(nodes, edges, options = {}) {
   const name = options.name?.trim() || 'picop-workflow'
-  const schemaDir = openSpecSchemaDir(name)
+  const layout = resolveLayout('openspec', name, options.singleRun)
   const artifacts = buildArtifactsPipeline(nodes, edges, {
     artifactIdMode: 'openspec',
     typeFallback: true,
     writeNeedsSpecStep: false,
     autoTasks: true,
-    schemaDir,
+    layout,
+    options,
   })
 
   const doc = {
@@ -1169,7 +1282,7 @@ export function buildOpenSpecWorkflow(nodes, edges, options = {}) {
   }
 
   const yaml = dump(doc, { lineWidth: -1, noRefs: true })
-  const workflowPath = `${schemaDir}/schema.yaml`
+  const workflowPath = `${layout.workflowDir}/schema.yaml`
 
   return { yaml, workflowPath }
 }
@@ -1182,13 +1295,14 @@ export function buildOpenSpecWorkflow(nodes, edges, options = {}) {
  */
 export function buildSpecWorkflow(nodes, edges, options = {}) {
   const name = options.name?.trim() || 'picop-workflow'
-  const changeDir = specChangeDir(name)
+  const layout = resolveLayout('spec', name, options.singleRun)
   const artifacts = buildArtifactsPipeline(nodes, edges, {
     artifactIdMode: 'step',
     typeFallback: false,
     writeNeedsSpecStep: true,
     autoTasks: false,
-    schemaDir: changeDir,
+    layout,
+    options,
   })
 
   const doc = {
@@ -1199,7 +1313,7 @@ export function buildSpecWorkflow(nodes, edges, options = {}) {
   }
 
   const yaml = dump(doc, { lineWidth: -1, noRefs: true })
-  const workflowPath = `${changeDir}/specs/${toStepId(name, 'picop-workflow')}/workflow.yaml`
+  const workflowPath = `${layout.workflowDir}/specs/${layout.slug}/workflow.yaml`
 
   return { yaml, workflowPath }
 }
@@ -1207,13 +1321,29 @@ export function buildSpecWorkflow(nodes, edges, options = {}) {
 // === SKILL 导出 ===
 
 /** SKILL 形态导出目录（含目录名，SKILL.md 所在处） */
-export function skillDir(workflowName) {
-  return `skills/${toStepId(workflowName, 'picop-skill')}`
+export function skillDir(workflowName, singleRun) {
+  return resolveLayout('skill', workflowName, singleRun).workflowDir
+}
+
+/** SKILL 步骤引用：`步骤 N 的 标题`（N 为拓扑序步骤号） */
+function skillStepRef(ctx, id) {
+  const node = ctx?.nodeMap?.get(id)
+  const step = ctx?.stepIndex?.get(id)
+  if (!node || !step) return null
+  return `步骤 ${step} 的${node?.data?.title || node.type || '上游产物'}`
+}
+
+/** 下游节点消费本产物时的动词（写文档 / 输出 / 使用） */
+function skillDownstreamVerb(node) {
+  if (isLarkWriteNode(node)) return '写入飞书文档'
+  if (node?.type === NodeTypes.AI_OUTPUT) return '输出最终产物'
+  return '使用'
 }
 
 /** 从单个非输入节点生成 SKILL 正文的一句/一段指令（自然语言） */
-function skillNodeInstruction(node, projectIdx) {
+function skillNodeInstruction(node, projectIdx, ctx) {
   const data = node?.data || {}
+  const layout = ctx?.layout
   switch (node.type) {
     case NodeTypes.SKILL:
       return data.skillName || data.skillId || ''
@@ -1234,7 +1364,7 @@ function skillNodeInstruction(node, projectIdx) {
       const idx = projectIdx?.get(node.id)
       const target =
         idx !== undefined
-          ? `在项目（位置见 ${projectMdRef(idx)}）`
+          ? `在项目（位置见 ${projectMdRef(idx, layout?.wfRef)}）`
           : '在当前项目'
       const intent =
         data.instruction || data.description || '分析 / 修改项目代码'
@@ -1256,18 +1386,42 @@ function skillNodeInstruction(node, projectIdx) {
       if (data.content) return data.content
       return '将总结果汇总输出。'
     case NodeTypes.BMAD_AGENT:
-      return `以「${data.role || data.agentId || 'BMad Agent'}」身份行事：完整角色定义见 ${bmadArtifactPath(node)}`
+      return `以「${data.role || data.agentId || 'BMad Agent'}」身份行事：完整角色定义见 ${joinPath(layout?.sharedRef, bmadArtifactPath(node))}`
     case NodeTypes.MEMORY:
-      return `读取项目记忆文件 ${memoryArtifactPath(node)}。`
+      return `读取项目记忆文件 ${joinPath(layout?.sharedRef, memoryArtifactPath(node))}。`
     case NodeTypes.LARK:
-      // URL 不内联：读/写目标统一落在 inputs/urls.md，SKILL 固定后可只改该文件复用
+      // URL 不内联：读/写目标统一落在 urls.md，SKILL 固定后可只改该文件复用
       return data.action === 'write'
-        ? `将产物写入飞书文档（URL 见 ${URLS_ARTIFACT_PATH} 的「Lark 文档（写入）」）`
-        : `读取飞书文档（URL 见 ${URLS_ARTIFACT_PATH} 的「Lark 文档（读取）」）`
+        ? `将产物写入飞书文档（URL 见 ${joinPath(layout?.wfRef, URLS_ARTIFACT_PATH)} 的「Lark 文档（写入）」）`
+        : `读取飞书文档（URL 见 ${joinPath(layout?.wfRef, URLS_ARTIFACT_PATH)} 的「Lark 文档（读取）」）`
     case NodeTypes.LARK_TEMPLATE:
-      return `获取飞书模板文档（URL 见 ${URLS_ARTIFACT_PATH} 的「Lark 文档（读取）」，模板）`
-    case NodeTypes.AGENT:
-      return data.instruction || data.description || '调用 AI 完成本步骤。'
+      return `获取飞书模板文档（URL 见 ${joinPath(layout?.wfRef, URLS_ARTIFACT_PATH)} 的「Lark 文档（读取）」，模板）`
+    case NodeTypes.AGENT: {
+      // 输入 / 输出由节点连线推导：指明上游来自哪几步、产物交给哪几步，
+      // 避免只写一句“调用 AI 完成本步骤”导致 AI 自行脑补
+      const intent = (data.instruction || data.description || '').replace(
+        /[。\s]+$/,
+        '',
+      )
+      const ins = (ctx?.preds?.get(node.id) || [])
+        .map((id) => skillStepRef(ctx, id))
+        .filter(Boolean)
+      const outs = (ctx?.succs?.get(node.id) || [])
+        .map((id) => ({
+          ref: skillStepRef(ctx, id),
+          node: ctx?.nodeMap?.get(id),
+        }))
+        .filter((o) => o.ref)
+      const outDesc = data.output || '本步骤产物'
+      const outText =
+        outs.length === 0
+          ? `输出${outDesc}。`
+          : outs.length === 1
+            ? `输出${outDesc}，供${outs[0].ref}${skillDownstreamVerb(outs[0].node)}。`
+            : `输出${outDesc}，供${outs.map((o) => o.ref).join('、')}使用。`
+      const main = intent ? `${intent}，${outText}` : outText
+      return ins.length > 0 ? `输入：${ins.join('、')}。\n${main}` : main
+    }
     case NodeTypes.IF:
     case NodeTypes.IF_CONDITION:
     case NodeTypes.LOOP:
@@ -1310,7 +1464,8 @@ export function buildSkillWorkflow(nodes, edges, options = {}) {
 
   const name = options.name?.trim() || '未命名工作流'
   const slug = toStepId(name, 'picop-skill')
-  const skillRoot = skillDir(name)
+  // 目录布局：决定主文件 / workflow 专属输入物 / 共享输入物的落盘位置与引用前缀
+  const layout = resolveLayout('skill', name, options.singleRun)
 
   const userInputIds = sorted
     .filter((n) => n.type === NodeTypes.USER_INPUT)
@@ -1323,6 +1478,18 @@ export function buildSkillWorkflow(nodes, edges, options = {}) {
   const sections = []
   // 项目位置 → urls.md 段内序号（只引用，不内联路径）
   const projectIdx = projectRefIndexMap(nodes)
+  // 连线上下文：供 AGENT 步骤推导「输入 / 输出」（步骤号 = 拓扑序下标 + 1）
+  const stepIndex = new Map(sorted.map((n, i) => [n.id, i + 1]))
+  const nodeMap = new Map(sorted.map((n) => [n.id, n]))
+  const preds = new Map()
+  const succs = new Map()
+  for (const edge of edges) {
+    if (!succs.has(edge.source)) succs.set(edge.source, [])
+    succs.get(edge.source).push(edge.target)
+    if (!preds.has(edge.target)) preds.set(edge.target, [])
+    preds.get(edge.target).push(edge.source)
+  }
+  const ctx = { preds, succs, nodeMap, stepIndex, layout }
   sorted.forEach((node, i) => {
     const data = node?.data || {}
     const title = data?.title || `${node.type} ${i + 1}`
@@ -1332,7 +1499,7 @@ export function buildSkillWorkflow(nodes, edges, options = {}) {
       // 静态输入已随全量导出落盘为 inputs/user-input/<slug>.md（与 SKILL.md 同级），
       // 指令只给相对路径引用，避免把内容内联进 SKILL 正文
       const ref = hasStaticInput(node)
-        ? `见${userInputArtifactPath(node)}`
+        ? `见${joinPath(layout.wfRef, userInputArtifactPath(node))}`
         : '由调用方补充提供'
       instruction =
         param === 'prompt'
@@ -1341,8 +1508,11 @@ export function buildSkillWorkflow(nodes, edges, options = {}) {
             }`
           : `用户输入 ${param}：${ref}`
     } else {
-      instruction = skillNodeInstruction(node, projectIdx)
+      instruction = skillNodeInstruction(node, projectIdx, ctx)
     }
+    // 系统提示词：全量导出走 path 引用，非全量导出内联全文
+    const sp = systemPromptBlock(node, layout, options)
+    if (sp) instruction = `${instruction ? `${instruction}\n\n` : ''}${sp}`
     sections.push(
       `### ${i + 1}. ${title}\n\n${instruction || '（该节点无额外指令，延续上游输出）'}`,
     )
@@ -1366,7 +1536,7 @@ export function buildSkillWorkflow(nodes, edges, options = {}) {
     '',
   ].join('\n')
 
-  return { yaml: md, workflowPath: `${skillRoot}/SKILL.md` }
+  return { yaml: md, workflowPath: `${layout.workflowDir}/SKILL.md` }
 }
 
 // === 统一分发 ===
@@ -1397,6 +1567,7 @@ export function listCollectableArtifacts(nodes) {
   const memoryNodes = []
   const larkRefs = []
   const projectRefs = []
+  const systemPromptFiles = new Set()
 
   for (const node of nodes) {
     const data = node?.data || {}
@@ -1428,6 +1599,8 @@ export function listCollectableArtifacts(nodes) {
         title: data.title || node.id,
       })
     }
+    const promptFile = systemPromptFile(node)
+    if (promptFile) systemPromptFiles.add(promptFile)
     if (node.type === NodeTypes.LARK && data.url) {
       larkRefs.push({
         nodeId: node.id,
@@ -1468,5 +1641,6 @@ export function listCollectableArtifacts(nodes) {
     memoryNodes,
     larkRefs,
     projectRefs,
+    systemPromptFiles: [...systemPromptFiles],
   }
 }

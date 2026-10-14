@@ -7,7 +7,14 @@
 import type { Node } from '@xyflow/react'
 
 // re-export：zip 导出 API 经动态 import 从本模块取用
-export { openSpecSchemaDir, specChangeDir, skillDir } from './export-core.mjs'
+export {
+  openSpecSchemaDir,
+  specChangeDir,
+  skillDir,
+  resolveLayout,
+  joinPath,
+  AGENT_ROOT,
+} from './export-core.mjs'
 
 /** 导出包内的一项输入物 */
 export interface CollectedArtifact {
@@ -24,6 +31,12 @@ export interface CollectedArtifact {
 export interface CollectArtifactsOptions {
   /** Skill/Memory 文件所在的运行数据根目录（缺省 process.cwd()） */
   baseDir?: string
+  /** 导出格式（决定目录布局）：skill / openspec / spec / speckit */
+  format?: string
+  /** 工作流名称（决定 skill / 变更目录名） */
+  name?: string
+  /** 单次执行（默认 true）：自包含结构；false：.agent 共享结构 */
+  singleRun?: boolean
 }
 
 export declare function collectArtifacts(

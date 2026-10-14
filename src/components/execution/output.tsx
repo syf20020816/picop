@@ -1,15 +1,32 @@
 import { useNodeStore } from '#/store/node'
 import { Collapse, Typography } from 'antd'
 import { CodeEditor } from '#/components/file-editor/editor'
+import { useMemo } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 
 const { Text } = Typography
 
 export const OutputPanel = () => {
   const pipelineContext = useNodeStore((state) => state.pipelineContext)
-  const nodes = useNodeStore((state) => state.nodes)
+  // 只订阅 {nodeId: title} 字符串映射：拖拽时 nodes 数组每帧变化但映射值不变，
+  // 经 useShallow 浅比较跳过重渲染，避免执行面板跟着拖拽卡顿
+  const nodeTitleMap = useNodeStore(
+    useShallow((state) =>
+      Object.fromEntries(
+        state.nodes.map((n) => [
+          n.id,
+          typeof n.data.title === 'string' ? n.data.title : '',
+        ]),
+      ),
+    ),
+  )
 
-  const outputEntries = nodes.filter(
-    (n) => pipelineContext.nodeOutputs[n.id] !== undefined,
+  const outputEntries = useMemo(
+    () =>
+      Object.keys(pipelineContext.nodeOutputs)
+        .filter((id) => id in nodeTitleMap)
+        .map((id) => ({ id, title: nodeTitleMap[id] })),
+    [pipelineContext.nodeOutputs, nodeTitleMap],
   )
 
   if (outputEntries.length === 0) {
@@ -25,14 +42,13 @@ export const OutputPanel = () => {
       defaultActiveKey={outputEntries.map((n) => n.id)}
       ghost
       size="small"
-      items={outputEntries.map((node) => {
-        const output = pipelineContext.nodeOutputs[node.id]
-        const title = node.data.title
+      items={outputEntries.map((entry) => {
+        const output = pipelineContext.nodeOutputs[entry.id]
         return {
-          key: node.id,
+          key: entry.id,
           label: (
             <Text strong style={{ fontSize: 13, whiteSpace: 'nowrap' }}>
-              {typeof title === 'string' ? title : '未命名节点'}
+              {entry.title || '未命名节点'}
             </Text>
           ),
           children: output ? (

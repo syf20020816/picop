@@ -37,6 +37,7 @@ import {
   NodeTypes,
   buildWorkflow,
   autoSkillDescription,
+  listCollectableArtifacts,
 } from '../shared/export-core.mjs'
 
 const PROTOCOL_VERSION = '2024-11-05'
@@ -204,6 +205,7 @@ async function exportWorkflow({
   targetDir,
   description,
   full = true,
+  singleRun = true,
 }) {
   if (!name || !String(name).trim()) throw new Error('缺少 name（工作流名称）')
   const { nodes, edges } = normalizeWorkflow(workflow)
@@ -216,9 +218,29 @@ async function exportWorkflow({
   }
 
   // 与画布导出共用同一实现（shared/export-core.mjs），保证产物完全一致
+  // 单次执行（默认 true）：自包含结构；false：.agent 共享结构（prompts/memory/bmad 与 skills 同层）
+  const isSingleRun = singleRun !== false
+
+  // 非全量导出：内联系统提示词全文；全量导出：path 引用 + 落盘 prompts/
+  const systemPrompts = {}
+  if (!full) {
+    for (const file of listCollectableArtifacts(nodes).systemPromptFiles) {
+      try {
+        systemPrompts[file] = fs.readFileSync(
+          path.join(PICOP_DIR, 'prompts', file),
+          'utf-8',
+        )
+      } catch {
+        // 文件缺失则不内联（该步骤仅保留基础指令）
+      }
+    }
+  }
   const { yaml, workflowPath } = buildWorkflow(fmt, nodes, edges, {
     name: String(name).trim(),
     description,
+    full: Boolean(full),
+    systemPrompts,
+    singleRun: isSingleRun,
   })
 
   const baseDir = safeResolve(targetDir)
@@ -247,41 +269,39 @@ async function exportWorkflow({
   // 2. 全量导出：与画布 zip 同源（shared/artifact-collect.mjs），
   //    输入物 + openspec 附加文件 + manifest 全部落盘为真实目录文件（非 zip）
   if (full) {
-    const { collectArtifacts, openSpecSchemaDir, specChangeDir, skillDir } =
+    const { collectArtifacts, AGENT_ROOT } =
       await import('../shared/artifact-collect.mjs')
 
-    const collected = await collectArtifacts(nodes, { baseDir: PICOP_DIR })
-
-    // OpenSpec：输入物与 schema.yaml 同级；Spec：变更目录下；Skill：与 SKILL.md 同级；Speckit：保持导出根目录
-    const workflowName = String(name).trim()
-    const prefix =
-      fmt === 'openspec'
-        ? `${openSpecSchemaDir(workflowName)}/`
-        : fmt === 'spec'
-          ? `${specChangeDir(workflowName)}/`
-          : fmt === 'skill'
-            ? `${skillDir(workflowName)}/`
-            : ''
+    // 路径已按导出目录布局落位（单次执行自包含 / .agent 共享结构）
+    const collected = await collectArtifacts(nodes, {
+      baseDir: PICOP_DIR,
+      format: fmt,
+      name: String(name).trim(),
+      singleRun: isSingleRun,
+    })
 
     for (const item of collected) {
-      // SKILL 形态：被引用的其他技能是独立技能，落盘为 `skills/<id>/SKILL.md`，
-      // 与主技能目录同级，而不是嵌套进主技能目录内部
-      const nested = fmt === 'skill' && item.path.startsWith('skills/')
-      await writeFile((nested ? '' : prefix) + item.path, item.content)
+      await writeFile(item.path, item.content)
       if (item.warning) logs.push(`警告: ${item.warning}`)
     }
 
     // OpenSpec 附加文件：config.yaml（默认 schema）+ changes/archive/ 目录
     if (fmt === 'openspec') {
-      const schemaName = prefix.split('/').filter(Boolean).pop() || workflowName
-      await writeFile('openspec/config.yaml', `schema: ${schemaName}\n`)
-      await writeFile('openspec/changes/archive/.gitkeep', '')
+      const schemaName =
+        workflowPath.split('/').filter(Boolean).slice(-2, -1)[0] ||
+        String(name).trim()
+      const agentPrefix = isSingleRun ? '' : `${AGENT_ROOT}/`
+      await writeFile(
+        `${agentPrefix}openspec/config.yaml`,
+        `schema: ${schemaName}\n`,
+      )
+      await writeFile(`${agentPrefix}openspec/changes/archive/.gitkeep`, '')
       logs.push('已生成 openspec/config.yaml')
     }
 
     // manifest
     const manifest = {
-      name: workflowName,
+      name: String(name).trim(),
       target: fmt,
       workflowPath,
       artifactCount: collected.length,
@@ -294,6 +314,7 @@ async function exportWorkflow({
   return {
     format: fmt,
     full: Boolean(full),
+    singleRun: isSingleRun,
     files,
     workflowPath,
     nodes: nodes.length,
@@ -403,6 +424,11 @@ const TOOLS = [
           type: 'boolean',
           description:
             '是否全量导出（主文件 + 输入物 + manifest），缺省 true；false 则仅写主工作流文件。',
+        },
+        singleRun: {
+          type: 'boolean',
+          description:
+            '单次执行（缺省 true）：产物自包含，输入物挂在主文件目录下，便于单次执行；false 则采用 .agent 固定根目录结构，把 prompts / memory / bmad 提升到与 skills 同层，便于跨工作流复用。',
         },
       },
       required: ['workflow', 'name', 'targetDir'],

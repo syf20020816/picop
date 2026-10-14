@@ -20,6 +20,9 @@ export {
   openSpecSchemaDir,
   specChangeDir,
   skillDir,
+  resolveLayout,
+  joinPath,
+  AGENT_ROOT,
   buildSpecKitWorkflow,
   buildOpenSpecWorkflow,
   buildSpecWorkflow,
@@ -33,6 +36,7 @@ export type {
   ExportTarget,
   ExportOptions,
   ExportResult,
+  ExportLayout,
   LarkRef,
   CollectablePlan,
 } from '../../shared/export-core.mjs'
