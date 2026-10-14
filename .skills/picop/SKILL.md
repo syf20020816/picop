@@ -1,9 +1,9 @@
 ---
-name: 'picop-mcp'
+name: 'picop'
 description: '把用户自然语言描述的工作流程直接转换为 Picop 工作流产物并导出到项目目录（通过 MCP 连接 Picop 本地 Runner）。Invoke when user says 生成工作流 / 搭建工作流 / 把流程导出到项目 / build a workflow, or asks to convert a described process into an executable workflow.'
 metadata:
   author: shengyifei@lizhi.fm
-  version: '0.1.0'
+  version: '0.2.0'
 ---
 
 # Picop MCP：自然语言 → 工作流产物
@@ -16,7 +16,7 @@ metadata:
 
 - 只有用户意图是「把流程做成可复用产物 / 生成工作流 / 导出流程」时才激活本 skill。
 - 若用户给出一**组待办步骤**（例如"先读取 X，再分析，再检索 Y，最后输出 Z"），这些步骤是 `workflow_build` 的 `description` 输入素材，**不是执行清单**。**禁止**逐条执行它们。
-- 若用户只是点名 `/picop-mcp`、`Use Skill: picop-mcp` 或说"解析这个流程"而**没有明确要导出产物**，必须先澄清，再决定是否执行。用 `AskUserQuestion`，禁止默认直接执行：
+- 若用户只是点名 `/picop`、`Use Skill: picop` 或说"解析这个流程"而**没有明确要导出产物**，必须先澄清，再决定是否执行。用 `AskUserQuestion`，禁止默认直接执行：
   - "你是要我把这段流程用 picop 生成工作流并导出产物，还是让我直接执行？"
 - 若用户明确要"直接执行"而非生成产物，**退出本 skill 逻辑**，按普通任务处理，不要在生成工作流上纠结。
 
@@ -73,14 +73,21 @@ metadata:
 
    > 用此形态**不要用 `command: node`**；`find ~` 也搜不到 `/Applications`，直接用上面的固定路径（App 未装在 `/Applications` 时换成实际路径）。
 
-## 调用参数（可选，改变本次调用模式）
+## 调用参数（可选，附加在描述后）
 
-用户可在描述后附加 `-s` 或 `-l`，二选一：
+所有参数写在同一张表里，均可选；用户未带参数时走默认导出模式（下述三步）：
 
-- **`-s` / `--save`** — 生成后**保存到 Picop 工作流模板库**（调用 `workflow_save`），不导出到用户项目目录。适合「存到 Picop 备用 / 稍后回画布继续编排 / 先存后导」。示例：`生成一个每周晨会纪要工作流 -s`。
-- **`-l` / `--list`** — **只列出** Picop 已保存的工作流（调用 `workflow_list`，仅名称 + 描述），**不生成、不导出**。示例：`-l` 或 `列出 picop 里已保存的工作流`。
+| 参数 | 模式 | 取值 / 行为 | 示例 |
+| --------------------- | ------------ | --------------------------------------------------------------- | ----------------------------- |
+| `-o` / `--output <format>` | 指定导出格式 | 四选一：`speckit`（默认）/ `openspec` / `spec` / `skill`，透传给 `workflow_export` 的 `format`（取值含义见下文格式表） | `生成周报工作流 -o skill` |
+| `-s` / `--save` | 保存到模板库 | 生成后调用 `workflow_save` 存入 Picop 工作流模板库，**不导出**到项目目录 | `生成晨会纪要工作流 -s` |
+| `-l` / `--list` | 列出已有工作流 | 仅调用 `workflow_list`（名称 + 描述），**不生成、不导出** | `-l` 或 `列出 picop 里已保存的工作流` |
 
-不带参数 = 默认导出模式（下述三步）。带 `-s` 时流程为 `workflow_build` → `workflow_save`（跳过 `workflow_export`）；带 `-l` 时仅调用 `workflow_list` 并汇报，不要执行任何生成。
+组合规则：
+
+- `-l` 优先级最高：出现时忽略其他参数，仅列清单并汇报，不执行任何生成。
+- `-s` 与 `-o` 可同用，但 `-o` 仅在导出模式生效（保存到模板库时不区分格式）。
+- 未指定 `-o` 时：按用户描述的用途对照格式表推断，仍无法判断则用默认 `speckit`。
 
 ## 工作流程
 
@@ -100,7 +107,7 @@ metadata:
 - 用户带 `-s` / `--save`：调用 `workflow_save`，入参 `workflow`（build 返回对象）、`name`、`description`（简短一句话描述，缺省按节点自动生成）。返回 `{ id, name }`，即已存入 Picop 工作流模板库。
 - 否则：调用 `workflow_export`，产物与画布导出一致（共用 `shared/export-core.mjs`），**默认全量导出**（`full=true`）：除主工作流文件外，各节点引用的输入物（userInput 静态内容 / Skill / Memory / BMad / Lark URL 清单 + lark-cli 技能）与 `manifest.json` 一并以真实目录文件写入 `targetDir`（不是 zip——zip 只用于画布下载场景，SKILL+MCP 直接落盘目录即可）。入参：
   - `workflow`：**必须使用 build 返回的 `workflow` 对象**，不要自行编造或改写节点。
-  - `format`：按用户用途选择（见下表）。
+  - `format`：导出格式，取值即 `-o` 参数的四个取值。用户用 `-o` 显式指定时以其为准；未指定时按用户描述的用途对照下表推断，仍无法判断则用默认 `speckit`。
   - `name`：工作流名称（简短、语义化，如 `weekly-meeting-report`）。
   - `targetDir`：**用户项目根目录的绝对路径**（向用户确认，不要猜测）。
   - `full`：缺省 `true`（全量）；用户只要主文件时可传 `false`。
