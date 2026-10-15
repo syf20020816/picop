@@ -1,0 +1,191 @@
+{
+  "name": "拆解",
+  "id": "拆解",
+  "nodes": [
+    {
+      "id": "57e1bfe4-9e41-4329-9432-de441371000a",
+      "position": {
+        "x": 386.92,
+        "y": 192.9
+      },
+      "deletable": true,
+      "draggable": true,
+      "dragging": false,
+      "selectable": true,
+      "selected": true,
+      "zIndex": 1,
+      "isConnectable": true,
+      "positionAbsoluteX": 385,
+      "positionAbsoluteY": 215,
+      "type": "taskPlanner",
+      "data": {
+        "title": "任务拆解节点",
+        "instruction": ""
+      },
+      "measured": {
+        "width": 160,
+        "height": 39
+      }
+    },
+    {
+      "id": "5dc869da-fd46-41e6-afa6-e162d8dcc8b1",
+      "position": {
+        "x": 167.65999999999997,
+        "y": 194.4
+      },
+      "deletable": true,
+      "draggable": true,
+      "dragging": false,
+      "selectable": true,
+      "selected": false,
+      "zIndex": 1,
+      "isConnectable": true,
+      "positionAbsoluteX": 467,
+      "positionAbsoluteY": 129,
+      "type": "lark",
+      "data": {
+        "title": "Lark文档节点"
+      },
+      "measured": {
+        "width": 160,
+        "height": 39
+      }
+    },
+    {
+      "id": "1833d443-40e6-44d3-8a62-bb9ad5d82128",
+      "position": {
+        "x": 605.46,
+        "y": 194.12
+      },
+      "deletable": true,
+      "draggable": true,
+      "dragging": false,
+      "selectable": true,
+      "selected": false,
+      "zIndex": 1,
+      "isConnectable": true,
+      "positionAbsoluteX": 507.5,
+      "positionAbsoluteY": 77.5,
+      "type": "aiOutput",
+      "data": {
+        "title": "AI输出节点",
+        "outputPath": ""
+      },
+      "measured": {
+        "width": 160,
+        "height": 39
+      }
+    },
+    {
+      "id": "3d2e1001-725f-4a5d-a9fe-c08a114f1450",
+      "position": {
+        "x": -44.91999999999993,
+        "y": 194.17999999999998
+      },
+      "deletable": true,
+      "draggable": true,
+      "dragging": false,
+      "selectable": true,
+      "selected": false,
+      "zIndex": 1,
+      "isConnectable": true,
+      "positionAbsoluteX": 194.12000000000003,
+      "positionAbsoluteY": 210.73999999999998,
+      "type": "userInput",
+      "data": {
+        "title": "输入节点",
+        "input": {
+          "prompt": ""
+        }
+      },
+      "measured": {
+        "width": 160,
+        "height": 39
+      }
+    },
+    {
+      "id": "e2af8e2f-3347-41eb-ab59-baab75200a5f",
+      "position": {
+        "x": 605.9599999999998,
+        "y": 125.05999999999999
+      },
+      "deletable": true,
+      "draggable": true,
+      "dragging": false,
+      "selectable": true,
+      "selected": false,
+      "zIndex": 1,
+      "isConnectable": true,
+      "positionAbsoluteX": 716.8399999999999,
+      "positionAbsoluteY": 120.74,
+      "type": "aiOutput",
+      "data": {
+        "title": "AI输出节点",
+        "outputPath": ""
+      },
+      "measured": {
+        "width": 160,
+        "height": 39
+      }
+    },
+    {
+      "id": "5e03b259-e17d-40e3-a940-d030eb163411",
+      "position": {
+        "x": 607.3999999999999,
+        "y": 269.06
+      },
+      "deletable": true,
+      "draggable": true,
+      "dragging": false,
+      "selectable": true,
+      "selected": false,
+      "zIndex": 1,
+      "isConnectable": true,
+      "positionAbsoluteX": 819.0799999999999,
+      "positionAbsoluteY": 387.14,
+      "type": "aiOutput",
+      "data": {
+        "title": "AI输出节点",
+        "outputPath": ""
+      },
+      "measured": {
+        "width": 160,
+        "height": 39
+      }
+    }
+  ],
+  "edges": [
+    {
+      "source": "5dc869da-fd46-41e6-afa6-e162d8dcc8b1",
+      "target": "57e1bfe4-9e41-4329-9432-de441371000a",
+      "type": "nodeEdge",
+      "id": "xy-edge__5dc869da-fd46-41e6-afa6-e162d8dcc8b1-57e1bfe4-9e41-4329-9432-de441371000a"
+    },
+    {
+      "source": "3d2e1001-725f-4a5d-a9fe-c08a114f1450",
+      "target": "5dc869da-fd46-41e6-afa6-e162d8dcc8b1",
+      "type": "nodeEdge",
+      "id": "xy-edge__3d2e1001-725f-4a5d-a9fe-c08a114f1450-5dc869da-fd46-41e6-afa6-e162d8dcc8b1"
+    },
+    {
+      "source": "57e1bfe4-9e41-4329-9432-de441371000a",
+      "target": "1833d443-40e6-44d3-8a62-bb9ad5d82128",
+      "type": "nodeEdge",
+      "id": "xy-edge__57e1bfe4-9e41-4329-9432-de441371000a-1833d443-40e6-44d3-8a62-bb9ad5d82128"
+    },
+    {
+      "source": "57e1bfe4-9e41-4329-9432-de441371000a",
+      "target": "e2af8e2f-3347-41eb-ab59-baab75200a5f",
+      "type": "nodeEdge",
+      "id": "xy-edge__57e1bfe4-9e41-4329-9432-de441371000a-e2af8e2f-3347-41eb-ab59-baab75200a5f"
+    },
+    {
+      "source": "57e1bfe4-9e41-4329-9432-de441371000a",
+      "target": "5e03b259-e17d-40e3-a940-d030eb163411",
+      "type": "nodeEdge",
+      "id": "xy-edge__57e1bfe4-9e41-4329-9432-de441371000a-5e03b259-e17d-40e3-a940-d030eb163411"
+    }
+  ],
+  "createdAt": "2026-10-14T11:07:02.315Z",
+  "updatedAt": "2026-10-14T11:07:02.315Z"
+}

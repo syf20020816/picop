@@ -432,6 +432,24 @@ function isProcessingNode(node) {
   return PROCESSING_NODE_TYPES.has(node.type || '')
 }
 
+/**
+ * 控制流节点：if / loop / retry 及其条件子节点（ifCondition / loopCondition）。
+ * 导出时不生成独立步骤，编排说明并入最近上游节点的步骤（作为其子节点语义），
+ * 下游引用沿控制链穿透到最近非控制节点。
+ */
+const CONTROL_NODE_TYPES = new Set([
+  NodeTypes.IF,
+  NodeTypes.IF_CONDITION,
+  NodeTypes.LOOP,
+  NodeTypes.LOOP_CONDITION,
+  NodeTypes.RETRY,
+])
+
+/** 控制流节点判定 */
+function isControlNode(node) {
+  return CONTROL_NODE_TYPES.has(node?.type || '')
+}
+
 /** 输入类节点（含 userInput）是否标注了 specStep */
 function isSpecStepProvider(node) {
   return Boolean(
@@ -1209,6 +1227,22 @@ function buildArtifactsPipeline(nodes, edges, config) {
     artifact.instruction = roleHeader + artifact.instruction
   }
 
+  // ---- 4.5 控制节点（if/loop/retry）编排说明：并入最近上游处理节点的 artifact ----
+  for (const node of sorted) {
+    if (
+      !isControlNode(node) ||
+      node.type === NodeTypes.IF_CONDITION ||
+      node.type === NodeTypes.LOOP_CONDITION
+    ) {
+      continue
+    }
+    const target = findNearestNode(node, preds, nodeMap, isProcessingNode)
+    const artifact = target ? artifactByNode.get(target.id) : undefined
+    if (!artifact) continue
+    const note = controlNodeAnnotation(node, nodeMap, preds, succs)
+    if (note) artifact.instruction = `${artifact.instruction}\n\n${note}`
+  }
+
   // ---- 5. 无上游处理节点的 lark write：降级为独立 delivery artifact ----
   for (const w of orphanWrites) {
     if (artifacts.length === 0) break
@@ -1325,12 +1359,108 @@ export function skillDir(workflowName, singleRun) {
   return resolveLayout('skill', workflowName, singleRun).workflowDir
 }
 
-/** SKILL 步骤引用：`步骤 N 的 标题`（N 为拓扑序步骤号） */
-function skillStepRef(ctx, id) {
-  const node = ctx?.nodeMap?.get(id)
-  const step = ctx?.stepIndex?.get(id)
-  if (!node || !step) return null
+/** 沿控制节点链 BFS，收集另一端直接相连的非控制节点（引用穿透控制节点） */
+function controlFrontier(startId, neighbors, nodeMap) {
+  const result = []
+  const visited = new Set([startId])
+  const queue = [...(neighbors?.get(startId) || [])]
+  while (queue.length > 0) {
+    const id = queue.shift()
+    if (visited.has(id)) continue
+    visited.add(id)
+    const n = nodeMap?.get(id)
+    if (!n) continue
+    if (!isControlNode(n)) {
+      result.push(id)
+      continue
+    }
+    queue.push(...(neighbors?.get(id) || []))
+  }
+  return result
+}
+
+/** 单个可见节点的步骤引用文本 */
+function visibleStepRef(ctx, node) {
+  const step = ctx?.stepIndex?.get(node.id)
+  if (!step) return null
   return `步骤 ${step} 的${node?.data?.title || node.type || '上游产物'}`
+}
+
+/**
+ * 步骤引用列表：控制节点（if/loop/retry 及条件子节点）穿透到最近非控制节点，
+ * 避免下游引用悬空的编排步骤（如「步骤 3 的 Diff获取失败重试」）。
+ * @returns Array<{ ref: string, node: object }>
+ */
+function skillStepRefList(ctx, ids, direction = 'up') {
+  const result = []
+  const seen = new Set()
+  const neighbors = direction === 'down' ? ctx?.succs : ctx?.preds
+  for (const id of ids || []) {
+    const node = ctx?.nodeMap?.get(id)
+    if (!node) continue
+    const resolvedIds = isControlNode(node)
+      ? controlFrontier(id, neighbors, ctx.nodeMap)
+      : [id]
+    for (const rid of resolvedIds) {
+      if (seen.has(rid)) continue
+      seen.add(rid)
+      const rn = ctx?.nodeMap?.get(rid)
+      const ref = rn ? visibleStepRef(ctx, rn) : null
+      if (ref) result.push({ ref, node: rn })
+    }
+  }
+  return result
+}
+
+/**
+ * 控制节点 → 挂到最近上游非控制节点步骤上的编排说明。
+ * if / loop / retry 各产出一句控制语义；条件子节点（ifCondition / loopCondition）并入父节点，不单独产出。
+ */
+function controlNodeAnnotation(node, nodeMap, preds, succs) {
+  const data = node?.data || {}
+  const title = data?.title || node.type
+  /** 与本控制节点直连的条件子节点（父→子或子→父均算） */
+  const childConditions = (type) =>
+    [...(nodeMap?.values() || [])].filter((n) => {
+      if (n?.type !== type) return false
+      return (
+        (preds?.get(n.id) || []).includes(node.id) ||
+        (succs?.get(n.id) || []).includes(node.id)
+      )
+    })
+
+  switch (node.type) {
+    case NodeTypes.RETRY: {
+      const judge =
+        data.judgmentMode === 'ai'
+          ? '由 AI 判断是否失败'
+          : data.errorKeywords
+            ? `按关键词匹配失败（${data.errorKeywords}）`
+            : '人工判断是否失败'
+      return `控制编排「${title}」（重试）：本步骤执行失败时（${judge}），等待 ${data.retryDelay ?? 1} 秒后重试，最多 ${data.maxRetryCount ?? 5} 次。`
+    }
+    case NodeTypes.IF: {
+      const branches = childConditions(NodeTypes.IF_CONDITION)
+      const lines = [
+        `控制编排「${title}」（条件分支）：本步骤完成后按条件选择分支${data.expression ? `，判断依据：${data.expression}` : ''}。`,
+      ]
+      for (const b of branches) {
+        lines.push(
+          `- 分支「${b.data?.label || b.data?.condition || '条件'}」：${b.data?.condition || '未填写条件'}`,
+        )
+      }
+      return lines.join('\n')
+    }
+    case NodeTypes.LOOP: {
+      const conds = childConditions(NodeTypes.LOOP_CONDITION)
+        .map((n) => n.data?.condition)
+        .filter(Boolean)
+      const cond = data.condition || conds.join(' / ')
+      return `控制编排「${title}」（循环）：本步骤循环执行，最多 ${data.maxLoopCount ?? 5} 次${cond ? `，继续条件：${cond}` : ''}。`
+    }
+    default:
+      return ''
+  }
 }
 
 /** 下游节点消费本产物时的动词（写文档 / 输出 / 使用） */
@@ -1403,15 +1533,12 @@ function skillNodeInstruction(node, projectIdx, ctx) {
         /[。\s]+$/,
         '',
       )
-      const ins = (ctx?.preds?.get(node.id) || [])
-        .map((id) => skillStepRef(ctx, id))
-        .filter(Boolean)
-      const outs = (ctx?.succs?.get(node.id) || [])
-        .map((id) => ({
-          ref: skillStepRef(ctx, id),
-          node: ctx?.nodeMap?.get(id),
-        }))
-        .filter((o) => o.ref)
+      const ins = skillStepRefList(
+        ctx,
+        ctx?.preds?.get(node.id) || [],
+        'up',
+      ).map((o) => o.ref)
+      const outs = skillStepRefList(ctx, ctx?.succs?.get(node.id) || [], 'down')
       const outDesc = data.output || '本步骤产物'
       const outText =
         outs.length === 0
@@ -1422,17 +1549,6 @@ function skillNodeInstruction(node, projectIdx, ctx) {
       const main = intent ? `${intent}，${outText}` : outText
       return ins.length > 0 ? `输入：${ins.join('、')}。\n${main}` : main
     }
-    case NodeTypes.IF:
-    case NodeTypes.IF_CONDITION:
-    case NodeTypes.LOOP:
-    case NodeTypes.LOOP_CONDITION:
-    case NodeTypes.RETRY:
-      return (
-        `控制节点（${node.type}），按条件 / 循环 / 重试编排后续步骤，人工判断表达式：${data.expression || data.condition || ''}`.replace(
-          /\s+$/,
-          '',
-        ) || ''
-      )
     case NodeTypes.ANSWER:
       return `暂停等待用户回复：${data.question || ''}`
     case NodeTypes.CUSTOM:
@@ -1442,18 +1558,20 @@ function skillNodeInstruction(node, projectIdx, ctx) {
   }
 }
 
-/** 按节点自动生成 SKILL frontmatter description */
+/** 按节点自动生成 SKILL frontmatter description（控制流节点不占步骤，不进摘要） */
 export function autoSkillDescription(name, nodes) {
-  const titles = nodes.map((n) => n?.data?.title || n.type).filter(Boolean)
+  const flowNodes = (nodes || []).filter((n) => !isControlNode(n))
+  const titles = flowNodes.map((n) => n?.data?.title || n.type).filter(Boolean)
   const summary =
     titles.slice(0, 8).join(' → ') + (titles.length > 8 ? ' …' : '')
-  return `需要执行“${name}”工作流时使用。流程共 ${nodes.length} 个节点：${summary}。用 /${toStepId(name, 'picop-skill')} <prompt> 触发后按步骤依次执行。`
+  return `需要执行“${name}”工作流时使用。流程共 ${flowNodes.length} 个节点：${summary}。用 /${toStepId(name, 'picop-skill')} <prompt> 触发后按步骤依次执行。`
 }
 
 /**
  * 常规工程导出（SKILL 形态）：
  * 非 spec 模式的普通工作流 → 独立任务指令目录 `skills/<name>/SKILL.md`。
  * 无需用户标注 specStep，按拓扑序把每个节点映射为一步自然语言指令。
+ * 控制流节点（if/loop/retry 及条件子节点）不生成独立步骤：编排说明并入最近上游节点的步骤。
  * `<prompt>` 注入拓扑序首个 userInput 节点（作为运行时的用户输入）。
  */
 export function buildSkillWorkflow(nodes, edges, options = {}) {
@@ -1478,8 +1596,10 @@ export function buildSkillWorkflow(nodes, edges, options = {}) {
   const sections = []
   // 项目位置 → urls.md 段内序号（只引用，不内联路径）
   const projectIdx = projectRefIndexMap(nodes)
-  // 连线上下文：供 AGENT 步骤推导「输入 / 输出」（步骤号 = 拓扑序下标 + 1）
-  const stepIndex = new Map(sorted.map((n, i) => [n.id, i + 1]))
+  // 连线上下文：供 AGENT 步骤推导「输入 / 输出」（步骤号 = 可见节点拓扑序下标 + 1）
+  // 控制流节点（if/loop/retry 及条件子节点）不占步骤号，编排说明并入上游节点
+  const visible = sorted.filter((n) => !isControlNode(n))
+  const stepIndex = new Map(visible.map((n, i) => [n.id, i + 1]))
   const nodeMap = new Map(sorted.map((n) => [n.id, n]))
   const preds = new Map()
   const succs = new Map()
@@ -1490,7 +1610,32 @@ export function buildSkillWorkflow(nodes, edges, options = {}) {
     preds.get(edge.target).push(edge.source)
   }
   const ctx = { preds, succs, nodeMap, stepIndex, layout }
-  sorted.forEach((node, i) => {
+
+  // 控制节点编排说明：挂到最近上游可见节点的步骤上
+  const controlNotes = new Map()
+  for (const node of sorted) {
+    if (
+      !isControlNode(node) ||
+      node.type === NodeTypes.IF_CONDITION ||
+      node.type === NodeTypes.LOOP_CONDITION
+    ) {
+      continue
+    }
+    const target = findNearestNode(
+      node,
+      preds,
+      nodeMap,
+      (n) => !isControlNode(n),
+    )
+    if (!target) continue
+    const note = controlNodeAnnotation(node, nodeMap, preds, succs)
+    if (!note) continue
+    const list = controlNotes.get(target.id) || []
+    list.push(note)
+    controlNotes.set(target.id, list)
+  }
+
+  visible.forEach((node, i) => {
     const data = node?.data || {}
     const title = data?.title || `${node.type} ${i + 1}`
     let instruction
@@ -1513,8 +1658,13 @@ export function buildSkillWorkflow(nodes, edges, options = {}) {
     // 系统提示词：全量导出走 path 引用，非全量导出内联全文
     const sp = systemPromptBlock(node, layout, options)
     if (sp) instruction = `${instruction ? `${instruction}\n\n` : ''}${sp}`
+    // 控制节点（if/loop/retry）的编排说明并入本步骤
+    const body = [
+      ...(instruction ? [instruction] : []),
+      ...(controlNotes.get(node.id) || []),
+    ].join('\n\n')
     sections.push(
-      `### ${i + 1}. ${title}\n\n${instruction || '（该节点无额外指令，延续上游输出）'}`,
+      `### ${i + 1}. ${title}\n\n${body || '（该节点无额外指令，延续上游输出）'}`,
     )
   })
 

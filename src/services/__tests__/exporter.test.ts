@@ -693,6 +693,129 @@ describe('导出物管理', () => {
     expect(yaml).toContain('.agent/skills/前端技术文档编写指南/SKILL.md')
   })
 
+  it('skill：控制流节点（retry/if/loop）并入上游步骤，不生成独立步骤', () => {
+    const nodes = [
+      makeNode('input-1', 'userInput', { input: { prompt: '开始' } }),
+      makeNode('diff', 'agent', {
+        title: '拉取主分支Diff',
+        instruction: '拉取主分支最新代码并输出 diff',
+      }),
+      makeNode('retry-1', 'retry', {
+        title: 'Diff获取失败重试',
+        retryDelay: 2,
+        maxRetryCount: 3,
+        judgmentMode: 'manual',
+        errorKeywords: 'timeout',
+      }),
+      makeNode('review', 'agent', {
+        title: 'Code Review分析',
+        instruction: '逐文件逐行审查 diff',
+      }),
+      makeNode('if-1', 'if', { title: '是否通过', expression: 'review 通过' }),
+      makeNode('cond-a', 'ifCondition', {
+        title: '条件A',
+        label: '条件A',
+        condition: '无阻断问题',
+      }),
+    ]
+    const edges = [
+      makeEdge('input-1', 'diff'),
+      makeEdge('diff', 'retry-1'),
+      makeEdge('retry-1', 'review'),
+      makeEdge('review', 'if-1'),
+      makeEdge('if-1', 'cond-a'),
+    ]
+    const { yaml } = buildSkillWorkflow(nodes, edges, { name: '测试' })
+
+    // 控制节点不生成独立步骤
+    expect(yaml).not.toContain('Diff获取失败重试\n')
+    expect(yaml).not.toMatch(/^### \d+\. (Diff获取失败重试|是否通过|条件A)$/m)
+    // 步骤号只数可见节点：input=1, diff=2, review=3
+    expect(yaml).toContain('### 2. 拉取主分支Diff')
+    expect(yaml).toContain('### 3. Code Review分析')
+    // retry 编排说明并入上游 diff 步骤
+    expect(yaml).toContain(
+      '控制编排「Diff获取失败重试」（重试）：本步骤执行失败时（按关键词匹配失败（timeout）），等待 2 秒后重试，最多 3 次。',
+    )
+    // if 编排说明并入上游 review 步骤，条件子节点并入父节点
+    expect(yaml).toContain(
+      '控制编排「是否通过」（条件分支）：本步骤完成后按条件选择分支，判断依据：review 通过。',
+    )
+    expect(yaml).toContain('- 分支「条件A」：无阻断问题')
+    // 下游引用穿透控制节点：review 的输入指向 diff（步骤 2），而非 retry
+    expect(yaml).toContain('输入：步骤 2 的拉取主分支Diff。')
+    // 上游输出穿透控制节点：diff 的输出指向 review（步骤 3）
+    expect(yaml).toContain('供步骤 3 的Code Review分析使用')
+  })
+
+  it('skill：loop 循环节点并入上游步骤，loopCondition 条件并入父节点', () => {
+    const nodes = [
+      makeNode('input-1', 'userInput', { input: { prompt: '开始' } }),
+      makeNode('fetch', 'agent', {
+        title: '拉取数据',
+        instruction: '拉取数据',
+      }),
+      makeNode('loop-1', 'loop', {
+        title: '批量循环',
+        maxLoopCount: 8,
+        condition: '还有未处理数据',
+      }),
+      makeNode('loop-cond', 'loopCondition', {
+        title: '循环条件',
+        condition: '全部处理完成',
+      }),
+    ]
+    const edges = [
+      makeEdge('input-1', 'fetch'),
+      makeEdge('fetch', 'loop-1'),
+      makeEdge('loop-1', 'loop-cond'),
+    ]
+    const { yaml } = buildSkillWorkflow(nodes, edges, { name: '测试' })
+
+    expect(yaml).not.toMatch(/^### \d+\. (批量循环|循环条件)$/m)
+    expect(yaml).toContain('### 2. 拉取数据')
+    expect(yaml).toContain(
+      '控制编排「批量循环」（循环）：本步骤循环执行，最多 8 次，继续条件：还有未处理数据。',
+    )
+  })
+
+  it('openspec：控制节点不产 artifact，编排说明并入最近上游处理节点', () => {
+    const nodes = [
+      makeNode('input-1', 'userInput', {
+        input: { prompt: '需求' },
+        specStep: 'spec',
+      }),
+      makeNode('diff', 'agent', {
+        title: '拉取主分支Diff',
+        instruction: '拉取 diff',
+        specStep: 'research',
+      }),
+      makeNode('retry-1', 'retry', {
+        title: 'Diff获取失败重试',
+        maxRetryCount: 3,
+      }),
+      makeNode('review', 'agent', {
+        title: 'Code Review分析',
+        instruction: '审查 diff',
+        specStep: 'plan',
+      }),
+    ]
+    const edges = [
+      makeEdge('input-1', 'diff'),
+      makeEdge('diff', 'retry-1'),
+      makeEdge('retry-1', 'review'),
+    ]
+    const { yaml } = buildOpenSpecWorkflow(nodes, edges, { name: '测试' })
+
+    // 控制节点不生成独立 artifact（仅以编排说明出现）
+    expect(yaml).not.toContain('description: Diff获取失败重试')
+    expect(yaml).not.toMatch(/- id: diff-获取失败重试/)
+    // retry 编排说明挂在 diff（research）的 instruction 里
+    expect(yaml).toMatch(
+      /控制编排「Diff获取失败重试」（重试）：[\s\S]*最多 3 次/,
+    )
+  })
+
   it('spec / speckit：取消单次执行 → 主文件与 shell 引用带 .agent 前缀', () => {
     const nodes = [
       makeNode('input-1', 'userInput', {
