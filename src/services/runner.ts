@@ -52,14 +52,18 @@ export async function runnerFetch(
   if (await pingRunner()) {
     return fetch(`${RUNNER_BASE}${path}`, init)
   }
-  // 回退：本地开发服务端路由（部署到纯静态托管时这些路由不存在，依赖 Runner）
+  // 回退：本地开发/部署时的同源服务端路由
   const fallbackPath = path.startsWith('/models')
     ? '/api/execute/models'
     : path.startsWith('/lark')
       ? '/api/execute/lark'
-      : path.startsWith('/model')
-        ? '/api/model'
-        : `/api/execute${path}`
+      : path.startsWith('/file-write')
+        ? '/api/execute/fileWrite'
+        : path.startsWith('/http-proxy')
+          ? '/api/execute/httpProxy'
+          : path.startsWith('/model')
+            ? '/api/model'
+            : `/api/execute${path}`
   return fetch(fallbackPath, init)
 }
 

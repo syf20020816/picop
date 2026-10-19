@@ -6,14 +6,12 @@ import { fileURLToPath } from 'node:url'
 import type { Node, Edge } from '@xyflow/react'
 import { parseBmadSkillsCsv, parseBmadAgents, groupSkillsByPhase } from '#/engine/bmad/parser'
 import { mapWorkflowToBmad, analyzeWorkflowPhase } from '#/engine/bmad/mapper'
-import { callAI } from '#/services/ai'
 
 /**
  * BMad 执行 API
  * - status: 检查 BMad 安装状态
  * - skills: 获取 BMad 技能列表
  * - map-workflow: 映射工作流节点到 BMad Method
- * - execute-skill: 执行 BMad 技能（生成 LLM 指令）
  */
 
 // 获取项目根目录（从当前文件往上找）
@@ -231,91 +229,12 @@ export const Route = createFileRoute('/api/execute/bmad')({
             })
           }
 
-          // === execute-skill: 执行 BMad 技能 ===
-          if (action === 'execute-skill') {
-            const { model, systemPrompt, messages, temperature } = body
-
-            if (!model?.url || !model?.modelName) {
-              return Response.json({
-                status: 'error',
-                output: {},
-                logs: [...logs, '模型配置不完整'],
-                error: '请提供模型配置 (model.url, model.modelName)',
-              })
-            }
-
-            // 读取技能列表作为上下文
-            const csvContent = readBmadSkillsCsv()
-            const skills = parseBmadSkillsCsv(csvContent)
-
-            // 构建 BMad Method 上下文的 system prompt
-            const bmadContext = [
-              '你正在使用 BMad Method 方法论执行工作流任务。',
-              'BMad Method 是一套结构化的 AI 驱动开发方法论。',
-              '',
-              '可用技能阶段:',
-              ...skills.map((s) => `  [${s.phase}] ${s.displayName} - ${s.description}`),
-              '',
-              '请遵循 BMad Method 的规范输出结构化 Markdown 结果。',
-            ].join('\n')
-
-            const fullSystemPrompt = systemPrompt
-              ? `${bmadContext}\n\n${systemPrompt}`
-              : bmadContext
-
-            // 调用 AI（统一服务自动适配 Chat Completions / Responses API）
-            logs.push(`调用 AI 模型: ${model.modelName}`)
-            logs.push(`BMad 上下文已注入 (${skills.length} 个技能定义)`)
-
-            const callMessages = [...(messages || [])]
-            if (callMessages.length === 0) {
-              callMessages.push({
-                role: 'user',
-                content: body.input || '请执行 BMad 工作流任务...',
-              })
-            }
-
-            try {
-              const result = await callAI({
-                model: {
-                  name: model.modelName,
-                  key: model.apiKey,
-                  url: model.url,
-                  token: model.token,
-                },
-                systemPrompt: fullSystemPrompt,
-                messages: callMessages,
-                temperature: temperature ?? 0.3,
-              })
-
-              logs.push(`AI 响应完成 (tokens: ${result.usage?.totalTokens || 'unknown'})`)
-
-              return Response.json({
-                status: 'success',
-                output: {
-                  response: result.text,
-                  model: model.modelName,
-                  usage: result.usage,
-                },
-                logs,
-              })
-            } catch (err: any) {
-              logs.push(`API 调用异常: ${err.message}`)
-              return Response.json({
-                status: 'error',
-                output: {},
-                logs,
-                error: `AI API 调用失败: ${err.message}`,
-              })
-            }
-          }
-
           // === 未知操作 ===
           return Response.json({
             status: 'error',
             output: {},
             logs: [...logs, `未知操作: ${action}`],
-            error: `未知操作类型: ${action}。支持: status, skills, agents, map-workflow, analyze-phase, execute-skill`,
+            error: `未知操作类型: ${action}。支持: status, skills, agents, map-workflow, analyze-phase`,
           })
         } catch (err: any) {
           logs.push(`操作失败: ${err.message}`)

@@ -45,14 +45,12 @@ export type InputKind = (typeof InputKinds)[keyof typeof InputKinds]
 
 export type NUserInputData = {
   input?: {
-    /** 文字输入的内容 */
-    label?: string
     /** 提示词 */
     prompt?: string
-    /** 上传的文件 */
-    files?: File[]
-    /** URL 链接 */
-    urls?: string[]
+    /** 关联的技能 ID（平台技能为原始 ID；本机技能为 local:<tool>:<skill> 复合 id） */
+    skillId?: string
+    /** 技能名称（展示用） */
+    skillName?: string
   }
 } & NNode
 

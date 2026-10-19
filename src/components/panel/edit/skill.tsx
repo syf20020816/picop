@@ -1,7 +1,8 @@
 import { useNodeStore } from '#/store/node'
 import type { NSkill, NSkillData } from '#/types'
 import type { NodeProps } from '@xyflow/react'
-import { SkillSelect, ToolSelect } from '#/components/select'
+import { SkillSelect } from '#/components/select'
+import { useGlobalStore } from '#/store/global'
 import { DynEditKV } from './item'
 import type { DynEditKVRow } from './item'
 import { EditButton } from '#/components/button'
@@ -15,28 +16,12 @@ export const EditSkill = () => {
     (state) => state.currentNode,
   ) as NodeProps<NSkill>
   const patchCurrentNode = useNodeStore((state) => state.patchCurrentNode)
+  // 全流程统一使用全局本地工具（在执行面板顶部选择），用于加载该工具的本机技能
+  const globalTool = useGlobalStore((state) => state.tool)
 
   const skillId = currentNode.data.skillId || ''
 
   const rows: DynEditKVRow[] = [
-    {
-      key: 'tool',
-      label: '本地工具',
-      value: currentNode.data.tool || '',
-      valueRender: (onChange) => (
-        <ToolSelect
-          style={{ width: '100%' }}         
-          placeholder="选择本地工具（可选，用于加载该工具的本机技能）"
-          value={currentNode.data.tool || undefined}
-          onChange={(v) => {
-            patchCurrentNode((draft) => {
-              d(draft).tool = v || undefined
-            })
-            onChange(v)
-          }}
-        />
-      ),
-    },
     {
       key: 'skill',
       label: '选择技能',
@@ -45,7 +30,7 @@ export const EditSkill = () => {
         <SkillSelect
           style={{ width: '100%' }}
           placeholder="选择技能..."
-          tool={currentNode.data.tool}
+          tool={globalTool || undefined}
           value={currentNode.data.skillId || undefined}
           onChange={(value, skill) => {
             patchCurrentNode((draft) => {

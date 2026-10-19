@@ -17,7 +17,9 @@ import {
   RobotOutlined,
   LinkOutlined,
 } from '@ant-design/icons'
-import { SkillSelect, ToolSelect } from '#/components/select'
+import { SkillSelect } from '#/components/select'
+import { PicopSender } from '#/components/picop-sender'
+import { useGlobalStore } from '#/store/global'
 
 const { Text } = Typography
 
@@ -32,10 +34,21 @@ export const EditKnowledgeRetrieval = () => {
     (state) => state.currentNode,
   ) as NodeProps<NKnowledgeRetrieval>
   const patchCurrentNode = useNodeStore((state) => state.patchCurrentNode)
+  // 全流程统一使用全局本地工具（在执行面板顶部选择），用于加载该工具访问知识库的 MCP / 本机技能
+  const globalTool = useGlobalStore((state) => state.tool)
 
   const data = currentNode.data
   const mode = data.mode || 'local'
   const headers = data.headers || []
+
+  /** 技能统一变更入口：SkillSelect 与 PicopSender 共享，写入节点的 skillId/skillName */
+  const handleSkillChange = (value: string | undefined, name?: string) => {
+    patchCurrentNode((draft) => {
+      const dd = d(draft)
+      dd.skillId = value || undefined
+      dd.skillName = name
+    })
+  }
 
   return (
     <>
@@ -93,33 +106,24 @@ export const EditKnowledgeRetrieval = () => {
               <Text strong style={{ fontSize: 13 }}>
                 查询文本
               </Text>
-              <Input.TextArea
-                rows={2}
-                placeholder="留空则使用上游节点输出作为查询内容"
-                value={data.query}
-                onChange={(e) => {
-                  patchCurrentNode((draft) => {
-                    d(draft).query = e.target.value
-                  })
-                }}
-                style={{ marginTop: 4 }}
-              />
-            </div>
-
-            <div>
-              <Text strong style={{ fontSize: 13 }}>
-                本地工具
+              <Text type="secondary" style={{ fontSize: 11, marginLeft: 4 }}>
+                （留空则使用上游节点输出作为查询内容）
               </Text>
-              <ToolSelect
-                style={{ width: '100%', marginTop: 4 }}
-                placeholder="选择本地工具（需配置访问你知识库的 MCP）"
-                value={data.tool}
-                onChange={(toolId) => {
-                  patchCurrentNode((draft) => {
-                    d(draft).tool = toolId || undefined
-                  })
-                }}
-              />
+              <div style={{ marginTop: 4 }}>
+                <PicopSender
+                  value={data.query}
+                  onChange={(v) => {
+                    patchCurrentNode((draft) => {
+                      d(draft).query = v
+                    })
+                  }}
+                  skillId={data.skillId}
+                  skillName={data.skillName}
+                  onSkillChange={handleSkillChange}
+                  tool={globalTool || undefined}
+                  placeholder="输入查询内容，如：陶文的人数统计口径是什么？"
+                />
+              </div>
             </div>
 
             <div>
@@ -130,17 +134,11 @@ export const EditKnowledgeRetrieval = () => {
                 （可选）
               </Text>
               <SkillSelect
-                style={{ width: '100%', marginTop: 4 }}
-                placeholder="选择技能作为查询指令上下文..."
-                tool={data.tool}
+            style={{ width: '100%', marginTop: 4 }}
+            placeholder="选择技能作为查询指令上下文..."
+            tool={globalTool || undefined}
                 value={data.skillId}
-                onChange={(value, skill) => {
-                  patchCurrentNode((draft) => {
-                    const dd = d(draft)
-                    dd.skillId = value || undefined
-                    dd.skillName = skill?.name
-                  })
-                }}
+                onChange={(value, skill) => handleSkillChange(value, skill?.name)}
               />
             </div>
           </div>

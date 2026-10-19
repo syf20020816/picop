@@ -9,8 +9,8 @@ import { DisconnectOutlined, CheckCircleOutlined } from '@ant-design/icons'
 import { DynEditKV } from './item'
 import type { DynEditKVRow } from './item'
 import { useEffect } from 'react'
-import { EditButton } from '#/components/button'
-import { ToolSelect } from '#/components/select'
+import { useGlobalStore } from '#/store/global'
+import { useShallow } from 'zustand/react/shallow'
 
 const { Text } = Typography
 
@@ -22,8 +22,6 @@ export const EditAgent = () => {
   const currentNode = useNodeStore(
     (state) => state.currentNode,
   ) as NodeProps<NAgent>
-  const nodes = useNodeStore((state) => state.nodes)
-  const edges = useNodeStore((state) => state.edges)
   const patchCurrentNode = useNodeStore((state) => state.patchCurrentNode)
   const addBmadAgentForCurrent = useNodeStore(
     (state) => state.addBmadAgentForCurrent,
@@ -36,21 +34,32 @@ export const EditAgent = () => {
   useEffect(() => {
     fetchAgents()
   }, [])
+  // 全流程统一执行工具（在执行面板顶部选择）
+  const selectedTool = useGlobalStore((state) => state.tool)
 
-  const selectedTool = currentNode.data.tool || undefined
-
-  // 查找当前 AgentNode 是否已连线 BMadNode（BMad 为上游，agent 为下游）
-  const connectedBmadEdge = edges.find(
-    (e) =>
-      e.target === currentNode.id &&
-      nodes.find((n) => n.id === e.source)?.type === NodeTypes.BMAD_AGENT,
+  // 只订阅由「当前节点上游 BMad 连接」派生出的原始值：拖动任意节点时
+  // nodes/edges 每帧生成新引用，但这里取出的值不变，经 useShallow 浅比较后
+  // 跳过重渲染，避免编辑面板在拖拽时每帧重渲染整个表单。
+  const { connectedAgentId, connectedRole, hasBmadConnection } = useNodeStore(
+    useShallow((state) => {
+      const bmadEdge = state.edges.find(
+        (e) =>
+          e.target === currentNode.id &&
+          state.nodes.find((n) => n.id === e.source)?.type ===
+            NodeTypes.BMAD_AGENT,
+      )
+      const bmadData = bmadEdge
+        ? (state.nodes.find((n) => n.id === bmadEdge.source)?.data as
+            | { agentId?: string; role?: string }
+            | undefined)
+        : undefined
+      return {
+        connectedAgentId: bmadData?.agentId || undefined,
+        connectedRole: bmadData?.role,
+        hasBmadConnection: !!bmadEdge,
+      }
+    }),
   )
-  const connectedBmadNode = connectedBmadEdge
-    ? nodes.find((n) => n.id === connectedBmadEdge.source)
-    : null
-  const connectedBmadData = connectedBmadNode?.data as any
-  const connectedAgentId = connectedBmadData?.agentId || undefined
-  const hasBmadConnection = !!connectedBmadNode
 
   const rows: DynEditKVRow[] = [
     {
@@ -58,25 +67,6 @@ export const EditAgent = () => {
       label: '智能体别名',
       value: currentNode.data.modal?.alias,
       placeholder: '给智能体取一个易记的别名',
-    },
-    {
-      key: 'tool',
-      label: '本地工具',
-      valueRender: (onChange) => (
-        <ToolSelect
-          style={{ width: '100%' }}
-          value={selectedTool}
-          onChange={(toolId) => {
-            patchCurrentNode((draft) => {
-              const data = d(draft)
-              // 节点由本机 CLI 无头模式执行（凭据全留用户机器），平台无模型配置
-              data.tool = toolId || undefined
-            })
-            onChange(toolId)
-          }}
-        />
-      ),
-      actionRender: <EditButton.To url={'prompts'} />,
     },
     {
       key: 'agent',
@@ -141,7 +131,7 @@ export const EditAgent = () => {
       />
 
       {/* 已连接 BMad 角色的状态提示 */}
-      {hasBmadConnection && connectedBmadData?.role && (
+      {hasBmadConnection && connectedRole && (
         <div
           style={{
             display: 'flex',
@@ -153,7 +143,7 @@ export const EditAgent = () => {
           <div style={{ fontSize: 11, color: 'var(--xy-edge-stroke-default)' }}>
             <CheckCircleOutlined style={{ color: '#52c41a', marginRight: 4 }} />
             <Text type="secondary" style={{ fontSize: 11 }}>
-              已连接角色: {connectedBmadData.role}
+              已连接角色: {connectedRole}
             </Text>
           </div>
           <Tooltip title="断开 BMad 角色连接">
@@ -170,33 +160,12 @@ export const EditAgent = () => {
         </div>
       )}
 
-      {/* 本地工具模式提示 */}
-      {currentNode.data.tool && (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            marginTop: 8,
-          }}
-        >
+      {/* 本机执行工具提示 */}
+      {selectedTool && (
+        <div style={{ display: 'flex', alignItems: 'center', marginTop: 8 }}>
           <CheckCircleOutlined style={{ color: '#52c41a', marginRight: 4 }} />
           <Text type="secondary" style={{ fontSize: 11 }}>
-            本地工具模式：由本机 CLI 执行，优先于上方模型配置
-          </Text>
-        </div>
-      )}
-
-      {/* 本地工具选中提示 */}
-      {selectedTool && (
-        <div
-          style={{
-            fontSize: 11,
-            color: 'var(--xy-edge-stroke-default)',
-            marginTop: 4,
-          }}
-        >
-          <Text type="secondary">
-            执行工具: {selectedTool}（本机 CLI 无头模式）
+            本机 CLI 执行工具：{selectedTool}（在执行面板顶部统一选择）
           </Text>
         </div>
       )}

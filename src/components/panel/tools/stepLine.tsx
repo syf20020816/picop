@@ -12,9 +12,17 @@ import { PanelLeftClose, PanelRightClose } from 'lucide-react'
  * 汇总当前工作流中所有节点已标记的阶段，必选项以 * 标注，并提示缺失的必选项。
  * 标记仅用于编排验证，不产出任何 spec 文件。
  */
+/** 普通模式下的占位空数组：模块级常量保证引用稳定。
+ * 选择器若每次返回新 []，useSyncExternalStore 会判定状态变化 → 无限重渲染
+ * （Maximum update depth exceeded）。 */
+const EMPTY_NODES: ReturnType<typeof useNodeStore.getState>['nodes'] = []
+
 export const StepLinePanel = (props: PanelProps) => {
   const globalMode = useGlobalStore((state) => state.globalMode)
-  const nodes = useNodeStore((state) => state.nodes)
+  // 仅 Spec 模式才订阅 nodes：普通模式下返回常量空数组，拖拽不触发重渲染
+  const nodes = useNodeStore((state) =>
+    globalMode === 'spec' ? state.nodes : EMPTY_NODES,
+  )
   const isOpen = useGlobalStore((state) => state.isStepMenuOpen)
   const setIsOpen = useGlobalStore((state) => state.setIsStepMenuOpen)
 

@@ -1,38 +1,8 @@
-import { useModelStore } from '#/store/model'
-import type { Model } from '#/types/model'
 import { fetchLocalTools, fetchLocalToolSkills } from '#/services/runner'
 import type { LocalToolSkill } from '#/services/runner'
 import { Select } from 'antd'
 import type { SelectProps } from 'antd'
 import { useCallback, useEffect, useRef, useState } from 'react'
-
-// Omit<SelectProps, 'onChange'>：排除父接口的 onChange，避免与自定义签名（第二参为 Model[]）类型冲突
-export interface ModelSelectProps extends Omit<SelectProps, 'onChange'> {
-  onChange?: (value: string, models: Model[]) => void
-}
-
-export const ModelSelect = ({ value, onChange, ...rest }: ModelSelectProps) => {
-  const models = useModelStore((state) => state.models)
-  const fetchModels = useModelStore((state) => state.fetchModels)
-
-  useEffect(() => {
-    fetchModels()
-  }, [])
-
-  return (
-    <Select
-      placeholder="选择模型..."
-      value={value}
-      notFoundContent="暂无模型，请先添加"
-      options={models.map((m) => ({
-        label: `${m.name} (${m.modelName})`,
-        value: m.name,
-      }))}
-      onChange={(v) => onChange?.(v, models)}
-      {...rest}
-    />
-  )
-}
 
 /** 本地 CLI 工具选择器：列表来自 Runner 对本机的探测（claude/codex/deepseek 等），每次打开下拉重新探测 */
 export const ToolSelect = ({
@@ -107,6 +77,20 @@ async function fetchPlatformSkills(): Promise<PicopSkill[]> {
   } catch {
     return []
   }
+}
+
+/** 合并加载全部技能（本机 + 平台），供 SkillSelect / PicopSender 复用 */
+export async function loadAllSkills(tool?: string): Promise<SkillPick[]> {
+  const p = await fetchPlatformSkills()
+  const l = tool ? await fetchLocalToolSkills(tool) : []
+  return [
+    ...l.map((s) => ({
+      id: `local:${tool}:${s.id}`,
+      name: s.name,
+      source: 'local' as const,
+    })),
+    ...p.map((s) => ({ id: s.id, name: s.name, source: 'picop' as const })),
+  ]
 }
 
 /**

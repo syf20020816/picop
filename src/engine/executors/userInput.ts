@@ -13,14 +13,12 @@ export const userInputExecutor: NodeExecutor = {
       nodeId: config.nodeId,
       status: 'success',
       output: {
-        text: data.input?.label || input.text || '',
+        text: data.input?.prompt || input.text || '',
         prompt: data.input?.prompt || input.prompt || '',
-        files: data.input?.files || input.files || [],
-        urls: data.input?.urls || input.urls || [],
         // 透传所有上游输入
         ...input,
       },
-      logs: ['用户输入节点处理完成'],
+      logs: ['输入节点处理完成'],
     }
   },
 }

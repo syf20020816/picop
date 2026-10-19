@@ -1,0 +1,31 @@
+.root {
+  position: relative;
+}
+
+/* 选中的技能 chip */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  height: 22px;
+  border-radius: 11px;
+  font-size: 12px;
+  line-height: 22px;
+  color: var(--xy-edge-label-color, #1890ff);
+  background: color-mix(in srgb, #1890ff 12%, transparent);
+  border: 1px solid color-mix(in srgb, #1890ff 35%, transparent);
+}
+
+.chipText {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chipClose {
+  font-size: 10px;
+  cursor: pointer;
+  opacity: 0.7;
+}

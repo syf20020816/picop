@@ -9,6 +9,7 @@ import type {
 } from '#/types/engine'
 import { topologicalLayers, getPredecessors, getAncestorIds, getReachableNodeIds } from './topological'
 import { getExecutor } from './executors'
+import { useGlobalStore } from '#/store/global'
 import { extractAccumulated } from './accumulate'
 
 /** 从 node.data 中安全提取标题 */
@@ -268,7 +269,11 @@ export async function executeWorkflow(
           nodeId: node.id,
           nodeType: node.type || '',
           title: nodeTitle,
-          data: node.data as Record<string, any>,
+          data: {
+            ...(node.data as Record<string, any>),
+            // 全流程统一本地工具：已选全局工具则覆盖节点级 tool，避免各节点选用不同 CLI 造成偏差
+            ...(useGlobalStore.getState().tool ? { tool: useGlobalStore.getState().tool } : {}),
+          },
         }
 
         const execCtx: NodeExecutionContext = {

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useNodeStore } from '#/store/node'
 import { useModelStore } from '#/store/model'
 import { stripNodesModals, hydrateNodesModals } from '#/services/modal'
@@ -23,16 +23,38 @@ import {
   CopyOutlined,
   FileZipOutlined,
 } from '@ant-design/icons'
-import { BrushCleaning, Download, Save, Upload as UploadIcon } from 'lucide-react'
+import {
+  BrushCleaning,
+  Download,
+  Save,
+  Upload as UploadIcon,
+} from 'lucide-react'
 import type { RcFile } from 'antd/es/upload'
 import {
   SPEC_TARGETS,
+  EXPORT_TARGETS,
   parseSpecKitWorkflow,
   parseOpenSpecSchema,
 } from '#/services/specMap'
 import type { SpecTarget } from '#/services/specMap'
 import { buildWorkflow } from '#/services/exporter'
 import styles from '../index.module.scss'
+
+// 仅导出单文件（非全量）时内联系统提示词全文；
+// 全量导出走 path 引用（inputs/prompts/<file>.md），内容由后端落盘
+import codeAgentPrompt from '../../../../prompts/codeAgent.md?raw'
+import codeBatchPrompt from '../../../../prompts/codeBatch.md?raw'
+import keywordAgentPrompt from '../../../../prompts/keywordAgent.md?raw'
+import taskPlannerPrompt from '../../../../prompts/taskPlanner.md?raw'
+import selfCheckPrompt from '../../../../prompts/selfCheck.md?raw'
+
+const SYSTEM_PROMPTS: Record<string, string> = {
+  'codeAgent.md': codeAgentPrompt,
+  'codeBatch.md': codeBatchPrompt,
+  'keywordAgent.md': keywordAgentPrompt,
+  'taskPlanner.md': taskPlannerPrompt,
+  'selfCheck.md': selfCheckPrompt,
+}
 
 const { TextArea } = Input
 const { Text } = Typography
@@ -55,8 +77,6 @@ export const ToolsPanel = (props: ToolsPanelProps) => {
   const setNodes = useNodeStore((state) => state.setNodes)
   const setEdges = useNodeStore((state) => state.setEdges)
   const setWorkflowId = useNodeStore((state) => state.setWorkflowId)
-  const nodes = useNodeStore((state) => state.nodes)
-  const edges = useNodeStore((state) => state.edges)
   const clearPanel = useNodeStore((state) => state.clearPanel)
 
   const [importOpen, setImportOpen] = useState(false)
@@ -66,30 +86,51 @@ export const ToolsPanel = (props: ToolsPanelProps) => {
   const [workflowList, setWorkflowList] = useState<{ name: string }[]>([])
   const [importJson, setImportJson] = useState('')
   const [importError, setImportError] = useState('')
-  const [exportJson, setExportJson] = useState('')
   const [importTarget, setImportTarget] = useState<SpecTarget>('picop')
   const [exportTarget, setExportTarget] = useState<SpecTarget>('picop')
 
   // 导出选项
   const [exportMode, setExportMode] = useState<ExportMode>('yml')
   const [exportName, setExportName] = useState('')
+  const [exportSkillDescription, setExportSkillDescription] = useState('')
   const [mergeParallel, setMergeParallel] = useState(false)
+  // 单次执行（默认勾选）：产物自包含；取消后采用 .agent 共享目录结构
+  const [singleRun, setSingleRun] = useState(true)
 
-  const buildExportJson = () => {
-    // 导出时剥离 modal 敏感字段，只保留模型 ID 引用
-    const data: WorkflowData = { nodes: stripNodesModals(nodes), edges }
-    return JSON.stringify(data, null, 2)
-  }
-
-  /** 按目标平台生成导出文本（仅 yml 模式使用） */
-  const buildExportText = (target: SpecTarget): string => {
-    if (target === 'picop') return buildExportJson()
-    const result = buildWorkflow(target, nodes, edges, {
+  /**
+   * 导出预览文本（随状态实时派生）：
+   * 全部导出选项共同决定内容，避免手动 setState 同步漏掉某个选项导致预览滞后。
+   * - Picop 原生 JSON：剥离 modal 敏感字段，只保留模型 ID 引用
+   * - 全量导出（zip）：系统提示词以 path 引用（内容随 zip 落盘 inputs/prompts/）
+   * - 仅导出单文件：内联系统提示词全文
+   */
+  const exportPreview = useMemo(() => {
+    // 弹窗未打开时不计算；且不订阅 nodes/edges（拖拽时每帧变化会触发重渲染），
+    // 需要时通过 getState() 读取。预览仅在导出弹窗内被使用。
+    if (!exportOpen) return ''
+    const { nodes, edges } = useNodeStore.getState()
+    if (exportTarget === 'picop') {
+      const data: WorkflowData = { nodes: stripNodesModals(nodes), edges }
+      return JSON.stringify(data, null, 2)
+    }
+    const result = buildWorkflow(exportTarget, nodes, edges, {
       name: exportName,
       mergeParallel,
+      description: exportSkillDescription,
+      full: exportMode === 'zip',
+      singleRun,
+      systemPrompts: SYSTEM_PROMPTS,
     })
     return result.yaml
-  }
+  }, [
+    exportOpen,
+    exportTarget,
+    exportMode,
+    exportName,
+    exportSkillDescription,
+    mergeParallel,
+    singleRun,
+  ])
 
   const doImport = async (jsonStr: string) => {
     try {
@@ -179,9 +220,15 @@ export const ToolsPanel = (props: ToolsPanelProps) => {
       return
     }
 
-    const text = exportJson || buildExportText(exportTarget)
-    const ext = SPEC_TARGETS.find((t) => t.key === exportTarget)?.ext || 'json'
-    const mime = ext === 'yml' ? 'application/yaml' : 'application/json'
+    const text = exportPreview
+    const ext =
+      EXPORT_TARGETS.find((t) => t.key === exportTarget)?.ext || 'json'
+    const mime =
+      ext === 'yml'
+        ? 'application/yaml'
+        : ext === 'md'
+          ? 'text/markdown'
+          : 'application/json'
     const blob = new Blob([text], { type: mime })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -199,6 +246,7 @@ export const ToolsPanel = (props: ToolsPanelProps) => {
     }
 
     try {
+      const { nodes, edges } = useNodeStore.getState()
       const res = await fetch('/api/export/zip', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -210,6 +258,7 @@ export const ToolsPanel = (props: ToolsPanelProps) => {
           options: {
             name: exportName,
             mergeParallel,
+            singleRun,
           },
         }),
       })
@@ -221,7 +270,10 @@ export const ToolsPanel = (props: ToolsPanelProps) => {
       }
 
       const blob = await res.blob()
-      const safeName = (exportName || 'picop-workflow').replace(/[^a-zA-Z0-9_-]+/g, '-')
+      const safeName = (exportName || 'picop-workflow').replace(
+        /[^a-zA-Z0-9_-]+/g,
+        '-',
+      )
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
@@ -250,6 +302,7 @@ export const ToolsPanel = (props: ToolsPanelProps) => {
       return
     }
     try {
+      const { nodes, edges } = useNodeStore.getState()
       const res = await fetch('/api/workflows', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -288,7 +341,6 @@ export const ToolsPanel = (props: ToolsPanelProps) => {
   }
 
   const openExport = () => {
-    setExportJson(buildExportText(exportTarget))
     setExportOpen(true)
   }
 
@@ -431,14 +483,13 @@ export const ToolsPanel = (props: ToolsPanelProps) => {
         </div>
         <Radio.Group
           value={exportTarget}
-          onChange={(e) => {
-            const target = e.target.value as SpecTarget
-            setExportTarget(target)
-            setExportJson(buildExportText(target))
-          }}
+          onChange={(e) => setExportTarget(e.target.value as SpecTarget)}
           optionType="button"
           buttonStyle="solid"
-          options={SPEC_TARGETS.map((t) => ({ label: t.label, value: t.key }))}
+          options={EXPORT_TARGETS.map((t) => ({
+            label: t.label,
+            value: t.key,
+          }))}
           style={{ marginBottom: 16 }}
         />
 
@@ -452,7 +503,11 @@ export const ToolsPanel = (props: ToolsPanelProps) => {
               onChange={(e) => setExportMode(e.target.value as ExportMode)}
               style={{ marginBottom: 16 }}
             >
-              <Radio value="yml">仅导出 workflow.yml</Radio>
+              <Radio value="yml">
+                {exportTarget === 'skill'
+                  ? '仅导出 SKILL.md'
+                  : '仅导出 workflow.yml'}
+              </Radio>
               <Radio value="zip">全量导出 zip（含输入物）</Radio>
             </Radio.Group>
           </>
@@ -462,33 +517,67 @@ export const ToolsPanel = (props: ToolsPanelProps) => {
           <Text strong>工作流名称</Text>
         </div>
         <Input
-          placeholder="留空则使用 picop-workflow"
+          placeholder={
+            exportTarget === 'skill'
+              ? 'SKILL 目录名（技能名）'
+              : '留空则使用 picop-workflow'
+          }
           value={exportName}
-          onChange={(e) => {
-            setExportName(e.target.value)
-            if (exportTarget !== 'picop') {
-              setExportJson(buildExportText(exportTarget))
-            }
-          }}
+          onChange={(e) => setExportName(e.target.value)}
           style={{ marginBottom: 16 }}
         />
 
+        {exportTarget === 'skill' && (
+          <>
+            <div style={{ marginBottom: 8 }}>
+              <Text strong>Skill 描述（description）</Text>
+            </div>
+            <Input
+              placeholder="留空则根据节点自动生成（触发词/作用简介）"
+              value={exportSkillDescription}
+              onChange={(e) => setExportSkillDescription(e.target.value)}
+              style={{ marginBottom: 16 }}
+            />
+          </>
+        )}
+
         {exportTarget !== 'picop' && (
-          <Space direction="vertical" style={{ width: '100%', marginBottom: 16 }}>
+          <Space
+            direction="vertical"
+            style={{ width: '100%', marginBottom: 16 }}
+          >
             <Checkbox
               checked={mergeParallel}
-              onChange={(e) => {
-                setMergeParallel(e.target.checked)
-                setExportJson(buildExportText(exportTarget))
-              }}
+              onChange={(e) => setMergeParallel(e.target.checked)}
             >
-              合并并行步骤（仅当 command / integration / model / input 完全相同时）
+              合并并行步骤（仅当 command / integration / model / input
+              完全相同时）
             </Checkbox>
+
+            {exportMode === 'zip' && (
+              <Checkbox
+                checked={singleRun}
+                onChange={(e) => setSingleRun(e.target.checked)}
+              >
+                单次执行
+              </Checkbox>
+            )}
 
             {exportMode === 'zip' && (
               <div>
                 <Text type="secondary" style={{ fontSize: 11 }}>
-                  知识库检索节点在导出后按节点配置运行（本地 MCP 或远程 API），不随 zip 携带知识库数据。
+                  {singleRun
+                    ? '产物自包含（输入物挂在主文件目录下），便于单次执行。'
+                    : '采用 .agent 固定根目录结构，prompts / memory / bmad 提升到与 skills 同层，便于跨工作流复用。'}
+                </Text>
+              </div>
+            )}
+
+            {exportMode === 'zip' && (
+              <div>
+                <Text type="secondary" style={{ fontSize: 11 }}>
+                  知识库检索节点在导出后按节点配置运行（本地 MCP 或远程
+                  API），不随 zip 携带知识库数据。
                 </Text>
               </div>
             )}
@@ -504,33 +593,38 @@ export const ToolsPanel = (props: ToolsPanelProps) => {
           }}
         >
           <Text strong>
-            {SPEC_TARGETS.find((t) => t.key === exportTarget)?.label}{' '}
-            内容
+            {SPEC_TARGETS.find((t) => t.key === exportTarget)?.label} 内容
           </Text>
           <Button
             size="small"
             icon={<CopyOutlined />}
-            onClick={() => handleCopy(exportJson)}
+            onClick={() => handleCopy(exportPreview)}
           >
             复制
           </Button>
         </div>
         <TextArea
           rows={10}
-          value={exportJson}
+          value={exportPreview}
           readOnly
           style={{ fontFamily: 'monospace', fontSize: 11 }}
         />
         <Button
           type="primary"
-          icon={exportMode === 'zip' && exportTarget !== 'picop' ? <FileZipOutlined /> : <DownloadOutlined />}
+          icon={
+            exportMode === 'zip' && exportTarget !== 'picop' ? (
+              <FileZipOutlined />
+            ) : (
+              <DownloadOutlined />
+            )
+          }
           style={{ marginTop: 12 }}
           onClick={handleExportDownload}
           block
         >
           {exportMode === 'zip' && exportTarget !== 'picop'
             ? '下载 zip 包'
-            : `下载为 ${exportTarget === 'picop' ? 'JSON' : 'YAML'} 文件`}
+            : `下载为 ${exportTarget === 'picop' ? 'JSON' : (EXPORT_TARGETS.find((t) => t.key === exportTarget)?.ext || 'YAML').toUpperCase()} 文件`}
         </Button>
       </Modal>
 

@@ -7,6 +7,7 @@ import type { DynEditKVRow } from './item'
 import { Button, Divider, Typography, InputNumber, Tag } from 'antd'
 import { PlusOutlined, DisconnectOutlined } from '@ant-design/icons'
 import { v4 as uuidv4 } from 'uuid'
+import { useShallow } from 'zustand/react/shallow'
 
 const { Text } = Typography
 
@@ -16,19 +17,25 @@ const d = (
 
 export const EditLoop = () => {
   const currentNode = useNodeStore((state) => state.currentNode) as NodeProps<NLoop>
-  const nodes = useNodeStore((state) => state.nodes)
-  const edges = useNodeStore((state) => state.edges)
   const patchCurrentNode = useNodeStore((state) => state.patchCurrentNode)
   const addConnectNode = useNodeStore((state) => state.addConnectNode)
   const setCurrentNode = useNodeStore((state) => state.setCurrentNode)
 
-  // 查找当前 loopNode 是否已有 loopConditionNode
-  const conditionEdge = edges.find(
-    (e) => e.source === currentNode.id && nodes.find((n) => n.id === e.target)?.type === NodeTypes.LOOP_CONDITION,
+  // 只订阅循环条件节点的派生原始值：拖拽时 nodes/edges 每帧变化但值不变，
+  // 经 useShallow 浅比较跳过重渲染，避免编辑面板跟着拖拽卡顿
+  const { hasCondition, conditionText } = useNodeStore(
+    useShallow((state) => {
+      const e = state.edges.find(
+        (edge) =>
+          edge.source === currentNode.id &&
+          state.nodes.find((n) => n.id === edge.target)?.type ===
+            NodeTypes.LOOP_CONDITION,
+      )
+      const n = e ? state.nodes.find((x) => x.id === e.target) : null
+      const data = (n?.data ?? {}) as { condition?: string }
+      return { hasCondition: !!n, conditionText: data.condition || '' }
+    }),
   )
-  const conditionNode = conditionEdge ? nodes.find((n) => n.id === conditionEdge.target) : null
-  const conditionData = conditionNode?.data as any | undefined
-  const hasCondition = !!conditionNode
 
   const addCondition = () => {
     if (hasCondition) return
@@ -55,9 +62,16 @@ export const EditLoop = () => {
   }
 
   const removeCondition = () => {
-    if (!conditionEdge || !conditionNode) return
-    useNodeStore.getState().setNodes(nodes.filter((n) => n.id !== conditionNode.id))
-    useNodeStore.getState().setEdges(edges.filter((e) => e.id !== conditionEdge.id && e.source !== conditionNode.id))
+    if (!hasCondition) return
+    const { nodes, edges, setNodes, setEdges } = useNodeStore.getState()
+    const target = nodes.find(
+      (n) =>
+        n.type === NodeTypes.LOOP_CONDITION &&
+        edges.some((e) => e.source === currentNode.id && e.target === n.id),
+    )
+    if (!target) return
+    setNodes(nodes.filter((n) => n.id !== target.id))
+    setEdges(edges.filter((e) => e.target !== target.id && e.source !== target.id))
   }
 
   const rows: DynEditKVRow[] = [
@@ -118,11 +132,11 @@ export const EditLoop = () => {
         )}
       </div>
 
-      {conditionData && (
+      {hasCondition && (
         <div style={{ marginTop: 8, padding: 8, background: 'var(--xy-node-background-color)', borderRadius: 4 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <Tag color="blue" style={{ fontSize: 9, margin: 0 }}>
-              {conditionData.condition || '未设置条件'}
+              {conditionText || '未设置条件'}
             </Tag>
           </div>
           <Text type="secondary" style={{ fontSize: 10, display: 'block', marginTop: 4 }}>

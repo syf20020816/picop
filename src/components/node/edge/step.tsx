@@ -23,21 +23,21 @@ export const StepMarkNode = ({
   node: { id: string; data?: { specStep?: string } }
 }) => {
   const globalMode = useGlobalStore((state) => state.globalMode)
-  const nodes = useNodeStore((state) => state.nodes)
-  const setNodes = useNodeStore((state) => state.setNodes)
+  // 只订阅本节点的 specStep 原始值：拖动任意节点时 nodes 数组每帧生成新引用，
+  // 但这里返回的字符串不变，避免每个节点每帧重渲染；setNodes 通过 getState 取，
+  // 同样不建立订阅。
+  const current = useNodeStore(
+    (state) => state.nodes.find((n) => n.id === node.id)?.data?.specStep,
+  ) as string | undefined
   const [open, setOpen] = useState(false)
 
   if (globalMode !== 'spec') {
     return null
   }
 
-  // 从 store 读取标记状态，避免依赖 React Flow 节点组件重渲染
-  const current = nodes.find((n) => n.id === node.id)?.data?.specStep as
-    | string
-    | undefined
-
   const select = (key: string) => {
     const next = key === current ? undefined : (key as SpecStepKey)
+    const { nodes, setNodes } = useNodeStore.getState()
     const updated = nodes.map((n) =>
       n.id === node.id ? { ...n, data: { ...n.data, specStep: next } } : n,
     )

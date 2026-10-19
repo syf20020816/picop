@@ -1,5 +1,5 @@
 import type { NodeExecutionContext, NodeExecutionResult, NodeExecutor } from '#/types/engine'
-import { startAgentCli, pollAgentCliTask } from '#/services/runner'
+import { startAgentCli, pollAgentCliTask, runnerFetch } from '#/services/runner'
 import { loadSkillInstruction } from '#/services/skill'
 import { buildBudgetedContext } from '#/services/upstreamContext'
 
@@ -193,7 +193,7 @@ async function runApi(ctx: NodeExecutionContext): Promise<NodeExecutionResult> {
 
   logs.push(`请求: ${method} ${url}`)
   try {
-    const res = await fetch('/api/execute/httpProxy', {
+    const res = await runnerFetch('/http-proxy', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url, method, headers, body }),

@@ -7,6 +7,7 @@ import { Tag } from '#/components/tag'
 import { UNode } from '../'
 import { useNodeStore } from '#/store/node'
 import { useBmadAgentStore } from '#/store/bmad'
+import { useShallow } from 'zustand/react/shallow'
 
 /**
  * # 智能体节点
@@ -14,25 +15,31 @@ import { useBmadAgentStore } from '#/store/bmad'
  * 如果连接了 BMad 角色节点，会在节点上显示角色标签。
  */
 export const AgentNode = (props: NodeProps<NAgent>) => {
-  const edges = useNodeStore((state) => state.edges)
-  const nodes = useNodeStore((state) => state.nodes)
-  const agents = useBmadAgentStore((state) => state.agents)
-
-  // 查找是否有关联的 BMadNode（BMad 为上游，agent 为下游）
-  const connectedBmadEdge = edges.find(
-    (e) =>
-      e.target === props.id &&
-      nodes.find((n) => n.id === e.source)?.type === NodeTypes.BMAD_AGENT,
+  // 只订阅「本节点的上游 BMad 角色」这一派生结果，且返回值均为原始值。
+  // 拖动任意节点时 store 的 nodes/edges 数组每帧都会生成新引用，但这里取出的
+  // agentId/role 不变，经 useShallow 浅比较后跳过重渲染，避免所有智能体节点
+  // 跟着拖拽每帧重渲染造成卡顿。
+  const { agentId, role } = useNodeStore(
+    useShallow((state) => {
+      const bmadEdge = state.edges.find(
+        (e) =>
+          e.target === props.id &&
+          state.nodes.find((n) => n.id === e.source)?.type ===
+            NodeTypes.BMAD_AGENT,
+      )
+      const bmadData = bmadEdge
+        ? (state.nodes.find((n) => n.id === bmadEdge.source)?.data as
+            | { agentId?: string; role?: string }
+            | undefined)
+        : undefined
+      return { agentId: bmadData?.agentId, role: bmadData?.role }
+    }),
   )
-  const connectedBmadNode = connectedBmadEdge
-    ? nodes.find((n) => n.id === connectedBmadEdge.source)
-    : null
-  const connectedBmadData = connectedBmadNode?.data as any
 
-  // 查找 BMad agent 配置
-  const agentConfig = connectedBmadData?.agentId
-    ? agents.find((a) => a.id === connectedBmadData.agentId)
-    : null
+  // 仅取该角色的图标（原始值），agents 列表变化时才重渲染
+  const agentIcon = useBmadAgentStore((state) =>
+    agentId ? state.agents.find((a) => a.id === agentId)?.icon : undefined,
+  )
 
   return (
     <UNode node={props}>
@@ -44,12 +51,12 @@ export const AgentNode = (props: NodeProps<NAgent>) => {
       )}
 
       {/* 已连接 BMad 角色标签 */}
-      {connectedBmadData?.role && (
+      {role && (
         <div className={styles.row}>
-            <Tag color="purple">
-              {agentConfig?.icon} {connectedBmadData.role}
-            </Tag>
-          </div>
+          <Tag color="purple">
+            {agentIcon} {role}
+          </Tag>
+        </div>
       )}
     </UNode>
   )

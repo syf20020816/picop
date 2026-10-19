@@ -13,7 +13,7 @@ import type { SpecStepKey } from '#/constants/spec'
 
 // ==================== 平台定义 ====================
 
-export type SpecTarget = 'picop' | 'speckit' | 'openspec' | 'spec'
+export type SpecTarget = 'picop' | 'speckit' | 'openspec' | 'spec' | 'skill'
 
 export interface SpecTargetOption {
   key: SpecTarget
@@ -48,6 +48,17 @@ export const SPEC_TARGETS: SpecTargetOption[] = [
     label: 'Spec',
     description: 'workflow.yaml：artifacts 依赖图（spec/plan/tasks…），无需安装框架',
     ext: 'yml',
+  },
+]
+
+/** 导出目标选项（含 SKILL；导入仅限 SPEC_TARGETS） */
+export const EXPORT_TARGETS: SpecTargetOption[] = [
+  ...SPEC_TARGETS,
+  {
+    key: 'skill',
+    label: 'Skill',
+    description: 'SKILL.md：独立任务指令，用户 /xxx 执行该工作流',
+    ext: 'md',
   },
 ]
 

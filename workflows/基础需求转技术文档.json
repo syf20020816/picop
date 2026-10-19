@@ -1,0 +1,263 @@
+{
+  "name": "基础需求转技术文档",
+  "id": "基础需求转技术文档",
+  "nodes": [
+    {
+      "id": "node1",
+      "type": "userInput",
+      "data": {
+        "title": "prompt",
+        "input": {
+          "urls": [
+            "/Users/lizhi/Desktop/work/lizhi_hy/hy-repo/packages/apps/singer-center"
+          ],
+          "prompt": "请帮我对这个需求文档进行前端任务的梳理，技术方案设计，最终输出为前端技术方案文档，请基于模版编写"
+        }
+      },
+      "position": {
+        "x": 38.87343512807857,
+        "y": 20.674045567919237
+      },
+      "measured": {
+        "width": 160,
+        "height": 58
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "6bf28463-d374-41ba-ab2d-f83891b67f76",
+      "position": {
+        "x": 271.28611933323475,
+        "y": 23.4300982380719
+      },
+      "deletable": true,
+      "draggable": true,
+      "dragging": false,
+      "selectable": true,
+      "selected": false,
+      "zIndex": 1,
+      "isConnectable": true,
+      "positionAbsoluteX": 300,
+      "positionAbsoluteY": 100,
+      "type": "lark",
+      "data": {
+        "title": "需求文档",
+        "url": "https://lizhi2021.feishu.cn/wiki/Cv7GwYgvnisbiRktuoTcR4UsnYg",
+        "action": "read"
+      },
+      "measured": {
+        "width": 160,
+        "height": 89
+      }
+    },
+    {
+      "id": "e8d2db2f-4673-44b5-a959-5078f68e1471",
+      "position": {
+        "x": 528.9898630422631,
+        "y": 17.42176662994123
+      },
+      "deletable": true,
+      "draggable": true,
+      "dragging": false,
+      "selectable": true,
+      "selected": false,
+      "zIndex": 1,
+      "isConnectable": true,
+      "positionAbsoluteX": 506,
+      "positionAbsoluteY": 52,
+      "type": "agent",
+      "data": {
+        "title": "需求文档梳理",
+        "modal": {
+          "id": "f4d207ad-67d2-4a4a-be2c-de5a72dd26c5",
+          "alias": "Senior Software Engineer"
+        }
+      },
+      "measured": {
+        "width": 160,
+        "height": 77
+      }
+    },
+    {
+      "id": "cb00e23f-90a5-47a2-ae83-40c3c4156f82",
+      "position": {
+        "x": 966.1034057231913,
+        "y": 12.213511108448131
+      },
+      "deletable": true,
+      "draggable": true,
+      "dragging": false,
+      "selectable": true,
+      "selected": false,
+      "zIndex": 1,
+      "isConnectable": true,
+      "positionAbsoluteX": 987.2159999999999,
+      "positionAbsoluteY": 71.008,
+      "type": "lark",
+      "data": {
+        "title": "技术文档输出",
+        "action": "write",
+        "url": "https://lizhi2021.feishu.cn/wiki/Cv7GwYgvnisbiRktuoTcR4UsnYg",
+        "specStep": "plan"
+      },
+      "measured": {
+        "width": 160,
+        "height": 89
+      }
+    },
+    {
+      "id": "c9b5e271-313c-47ed-89e6-9b01bc6c99f3",
+      "position": {
+        "x": 742.8332463799454,
+        "y": 5.050348031047093
+      },
+      "deletable": true,
+      "draggable": true,
+      "dragging": false,
+      "selectable": true,
+      "selected": false,
+      "zIndex": 1,
+      "isConnectable": true,
+      "positionAbsoluteX": 767.5725,
+      "positionAbsoluteY": 18.64399999999999,
+      "type": "codeAgent",
+      "data": {
+        "title": "代码分析",
+        "projectPath": "/Users/lizhi/Desktop/work/lizhi_hy/hy-repo/packages/apps/singer-center",
+        "instruction": "通过需求分析后对项目代码进行了解，关注特殊的地方，最终输出技术文档",
+        "maxIterations": 40,
+        "branch": "master",
+        "modal": {
+          "id": "e60f9a67-f9e8-413e-951d-b6e9e779173e"
+        },
+        "useAppMap": false,
+        "description": "进行代码分析，最终输出技术方案文档"
+      },
+      "measured": {
+        "width": 160,
+        "height": 96
+      }
+    },
+    {
+      "id": "d80811b8-3984-4f22-a99f-0a02373bddc2",
+      "position": {
+        "x": 272.98311865740976,
+        "y": -96.30429407182629
+      },
+      "deletable": true,
+      "draggable": true,
+      "dragging": false,
+      "selectable": true,
+      "selected": false,
+      "zIndex": 1,
+      "isConnectable": true,
+      "positionAbsoluteX": 200,
+      "positionAbsoluteY": 0,
+      "type": "memory",
+      "data": {
+        "title": "用户记忆",
+        "memoryPath": "memory/memory.md"
+      },
+      "measured": {
+        "width": 160,
+        "height": 58
+      }
+    },
+    {
+      "id": "7df8ee0c-9779-41ff-8892-5cff9fbacdf0",
+      "position": {
+        "x": 269.58921598963866,
+        "y": 130.99624689638708
+      },
+      "deletable": true,
+      "draggable": true,
+      "dragging": false,
+      "selectable": true,
+      "selected": false,
+      "zIndex": 1,
+      "isConnectable": true,
+      "positionAbsoluteX": 200,
+      "positionAbsoluteY": 0,
+      "type": "skill",
+      "data": {
+        "title": "前端技术文档SKILL",
+        "skillId": "前端技术文档编写指南",
+        "skillName": "前端技术文档编写指南"
+      },
+      "measured": {
+        "width": 160,
+        "height": 64
+      }
+    },
+    {
+      "id": "8669cffa-46b7-4b11-8d09-9e3442959ad6",
+      "type": "bmadAgent",
+      "position": {
+        "x": 271.2060239251437,
+        "y": -194.1677324259278
+      },
+      "deletable": true,
+      "draggable": true,
+      "selectable": true,
+      "selected": false,
+      "data": {
+        "title": "Senior Software Engineer",
+        "role": "Senior Software Engineer",
+        "agentId": "bmad-agent-dev",
+        "roleDescription": "---\nname: bmad-agent-dev\ndescription: Senior software engineer for story execution and code implementation. Test-first discipline, ships verified code.\n---\n\n# 💻 Amelia — Senior Software Engineer\n\n## 角色定位\n\nYou are Amelia, the Senior Software Engineer. You execute approved stories with test-first discipline — red, green, refactor — shipping verified code that meets every acceptance criterion. File paths and AC IDs are your vocabulary.\n\n## 职责\n\nImplement approved stories with test-first discipline and ship working, verified code during the implementation phase.\n\n## 身份与方法论\n\nDisciplined in Kent Beck's TDD and the Pragmatic Programmer's precision.\n\n## 沟通风格\n\nUltra-succinct. Speaks in file paths and AC IDs — every statement citable. No fluff, all precision.\n\n## 行为准则\n\n- No task complete without passing tests.\n- Red, green, refactor — in that order.\n- Tasks executed in the sequence written.\n- Never add epic or story references as inline code comments (e.g. # Epic: X, # Story: PROJ-42).\n- Code comments explain why, not what — no AI workflow metadata, planning refs, or story tracking in source code.\n- Generated code must be production-ready: clean, minimal, and free of AI-generated noise.\n\n## 任务约束\n\n1. 基于输入（需求、验收标准、上游上下文）明确目标与范围\n2. 输出结构化结论，每个结论给出依据\n3. 对不确定的信息明确标注，不臆造事实\n"
+      },
+      "measured": {
+        "width": 160,
+        "height": 58
+      },
+      "dragging": false
+    }
+  ],
+  "edges": [
+    {
+      "id": "node1-6bf28463-d374-41ba-ab2d-f83891b67f76",
+      "source": "node1",
+      "target": "6bf28463-d374-41ba-ab2d-f83891b67f76",
+      "type": "nodeEdge"
+    },
+    {
+      "id": "6bf28463-d374-41ba-ab2d-f83891b67f76-e8d2db2f-4673-44b5-a959-5078f68e1471",
+      "source": "6bf28463-d374-41ba-ab2d-f83891b67f76",
+      "target": "e8d2db2f-4673-44b5-a959-5078f68e1471",
+      "type": "nodeEdge"
+    },
+    {
+      "source": "d80811b8-3984-4f22-a99f-0a02373bddc2",
+      "target": "e8d2db2f-4673-44b5-a959-5078f68e1471",
+      "type": "nodeEdge",
+      "id": "xy-edge__d80811b8-3984-4f22-a99f-0a02373bddc2-e8d2db2f-4673-44b5-a959-5078f68e1471"
+    },
+    {
+      "source": "e8d2db2f-4673-44b5-a959-5078f68e1471",
+      "target": "c9b5e271-313c-47ed-89e6-9b01bc6c99f3",
+      "type": "nodeEdge",
+      "id": "xy-edge__e8d2db2f-4673-44b5-a959-5078f68e1471-c9b5e271-313c-47ed-89e6-9b01bc6c99f3"
+    },
+    {
+      "source": "c9b5e271-313c-47ed-89e6-9b01bc6c99f3",
+      "target": "cb00e23f-90a5-47a2-ae83-40c3c4156f82",
+      "type": "nodeEdge",
+      "id": "xy-edge__c9b5e271-313c-47ed-89e6-9b01bc6c99f3-cb00e23f-90a5-47a2-ae83-40c3c4156f82"
+    },
+    {
+      "source": "7df8ee0c-9779-41ff-8892-5cff9fbacdf0",
+      "target": "e8d2db2f-4673-44b5-a959-5078f68e1471",
+      "type": "nodeEdge",
+      "id": "xy-edge__7df8ee0c-9779-41ff-8892-5cff9fbacdf0-e8d2db2f-4673-44b5-a959-5078f68e1471"
+    },
+    {
+      "id": "8669cffa-46b7-4b11-8d09-9e3442959ad6-e8d2db2f-4673-44b5-a959-5078f68e1471",
+      "source": "8669cffa-46b7-4b11-8d09-9e3442959ad6",
+      "target": "e8d2db2f-4673-44b5-a959-5078f68e1471",
+      "type": "nodeEdge"
+    }
+  ],
+  "createdAt": "2026-10-09T09:24:10.400Z",
+  "updatedAt": "2026-10-09T09:24:10.400Z"
+}

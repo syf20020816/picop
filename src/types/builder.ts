@@ -26,8 +26,8 @@ export class NodeBuilder {
       ...NodeBuilder.basicProps(pos.x, pos.y),
       type: NodeTypes.USER_INPUT,
       data: {
-        title: '用户输入节点',
-        input: { label: '' },
+        title: '输入节点',
+        input: { prompt: '' },
       },
     }
   }

@@ -1,155 +1,92 @@
 import { useNodeStore } from '#/store/node'
-import type { InputKind, NUserInput, NUserInputData } from '#/types'
-import { CirclePlus } from 'lucide-react'
-import styles from '../index.module.scss'
-import { Button, Radio } from 'antd'
-import type { CheckboxGroupProps } from 'antd/es/checkbox'
-import { useState } from 'react'
-import { DynEditKV } from './item'
-import type { DynEditKVRow } from './item'
+import type { NUserInput } from '#/types'
 import type { NodeProps } from '@xyflow/react'
+import { Typography } from 'antd'
+import { useState } from 'react'
+import { SkillSelect } from '#/components/select'
+import { PicopSender } from '#/components/picop-sender'
+import { useGlobalStore } from '#/store/global'
 
-const options: CheckboxGroupProps<string>['options'] = [
-  { label: '提示词', value: 'prompt' },
-  { label: '文件', value: 'file' },
-  { label: '链接', value: 'url' },
-]
-
-/** 在 immer recipe 中快捷获取 NUserInputData 类型的数据 */
-const d = (
-  draft: NonNullable<ReturnType<typeof useNodeStore.getState>['currentNode']>,
-) => draft.data as NUserInputData
+const { Text } = Typography
 
 export const EditUserInput = () => {
   const currentNode = useNodeStore(
     (state) => state.currentNode,
   ) as NodeProps<NUserInput>
   const patchCurrentNode = useNodeStore((state) => state.patchCurrentNode)
-  const [nodeInput, setNodeInput] = useState<InputKind>('prompt')
+  const syncSkillForCurrent = useNodeStore((state) => state.syncSkillForCurrent)
+  // 全流程统一本地工具（在执行面板顶部选择）
+  const tool = useGlobalStore((state) => state.tool)
 
-  const addInput = () => {
-    if (nodeInput === 'prompt') {
-      patchCurrentNode((draft) => {
-        const data = d(draft)
-        data.input ??= {}
-        data.input.prompt = ''
-      })
-    } else if (nodeInput === 'file') {
-      patchCurrentNode((draft) => {
-        const data = d(draft)
-        data.input ??= {}
-        data.input.files = []
-      })
-    } else if (nodeInput === 'url') {
-      patchCurrentNode((draft) => {
-        const data = d(draft)
-        data.input ??= {}
-        data.input.urls ??= []
-        data.input.urls.push('')
-      })
-    }
-  }
+  const input = currentNode.data.input || {}
+  const [prompt, setPrompt] = useState(input.prompt || '')
+  const [skillId, setSkillId] = useState<string | undefined>(input.skillId)
+  const [skillName, setSkillName] = useState<string | undefined>(input.skillName)
 
-  const removeItem = (key: string) => {
+  /** 技能统一变更入口：同步 SkillSelect/PicopSender 与输入节点数据，并创建/更新相连 SKILL 节点 */
+  const applySkill = (value: string | undefined, name?: string) => {
+    setSkillId(value)
+    setSkillName(name)
     patchCurrentNode((draft) => {
-      const data = d(draft)
+      const data = draft.data as NUserInput['data']
       data.input ??= {}
-      delete (data.input as any)[key]
+      data.input.skillId = value
+      data.input.skillName = value ? name : undefined
     })
+    syncSkillForCurrent({ id: value, name })
   }
 
-  const removeFile = (index: number) => {
+  const handlePromptChange = (v: string) => {
+    setPrompt(v)
     patchCurrentNode((draft) => {
-      d(draft).input?.files?.splice(index, 1)
+      const data = draft.data as NUserInput['data']
+      data.input ??= {}
+      data.input.prompt = v
     })
   }
-
-  const removeUrl = (index: number) => {
-    patchCurrentNode((draft) => {
-      d(draft).input?.urls?.splice(index, 1)
-    })
-  }
-
-  const rows: DynEditKVRow[] = []
-
-  if (currentNode.data.input?.label !== undefined) {
-    rows.push({
-      key: 'label',
-      label: '用户文本输入',
-      value: currentNode.data.input.label,
-      inputType: 'textArea',
-      placeholder: '输入用户文本',
-      onDelete: () => removeItem('label'),
-    })
-  }
-
-  if (currentNode.data.input?.prompt !== undefined) {
-    rows.push({
-      key: 'prompt',
-      label: '提示词',
-      value: currentNode.data.input.prompt,
-      inputType: 'textArea',
-      placeholder: '输入提示词',
-      onDelete: () => removeItem('prompt'),
-    })
-  }
-
-  currentNode.data.input?.files?.forEach((file, index) => {
-    rows.push({
-      key: `file-${index}`,
-      label: `文件 ${index + 1}`,
-      value: file,
-      placeholder: '上传文件',
-      onDelete: () => removeFile(index),
-    })
-  })
-
-  currentNode.data.input?.urls?.forEach((url, index) => {
-    rows.push({
-      key: `url-${index}`,
-      label: `链接 ${index + 1}`,
-      value: url,
-      placeholder: '输入链接',
-      onDelete: () => removeUrl(index),
-    })
-  })
 
   return (
     <>
-      <div className={styles.line_row}>
-        <Radio.Group
-          options={options}
-          defaultValue="prompt"
-          optionType="button"
-          value={nodeInput}
-          onChange={(e) => setNodeInput(e.target.value)}
-        ></Radio.Group>
-        <Button icon={<CirclePlus size={14} />} onClick={addInput}></Button>
+      <div style={{ marginBottom: 8 }}>
+        <Text type="secondary" style={{ fontSize: 11 }}>
+          输入节点的提示词作为下游的初始上下文。可使用{' '}
+          <Text code style={{ fontSize: 11 }}> / 技能名</Text>{' '}
+          快速选择技能，选中后会自动生成并连接一个 SKILL 节点。
+        </Text>
       </div>
-      <DynEditKV
-        rows={rows}
-        onChange={(key, value) => {
-          patchCurrentNode((draft) => {
-            const data = d(draft)
-            data.input ??= {}
-            if (key === 'label') {
-              data.input.label = (value || '') as string
-            } else if (key === 'prompt') {
-              data.input.prompt = (value || '') as string
-            } else if (key.startsWith('file-')) {
-              const index = Number(key.replace('file-', ''))
-              if (data.input.files) {
-                data.input.files[index] = value as File
-              }
-            } else if (key.startsWith('url-')) {
-              const index = Number(key.replace('url-', ''))
-              if (data.input.urls) {
-                data.input.urls[index] = (value || '') as string
-              }
-            }
-          })
-        }}
-      />
+
+      <div style={{ marginBottom: 12 }}>
+        <Text strong style={{ fontSize: 13 }}>
+          选择技能
+        </Text>
+        <Text type="secondary" style={{ fontSize: 11, marginLeft: 4 }}>
+          （可选）
+        </Text>
+        <div style={{ marginTop: 4 }}>
+          <SkillSelect
+            style={{ width: '100%' }}
+            tool={tool || undefined}
+            placeholder="选择技能（生成关联 SKILL 节点）..."
+            value={skillId || undefined}
+            onChange={(value, skill) => applySkill(value, skill?.name)}
+          />
+        </div>
+      </div>
+
+      <Text strong style={{ fontSize: 13 }}>
+        提示词
+      </Text>
+      <div style={{ marginTop: 4 }}>
+        <PicopSender
+          value={prompt}
+          onChange={handlePromptChange}
+          skillId={skillId}
+          skillName={skillName}
+          onSkillChange={applySkill}
+          tool={tool || undefined}
+          placeholder="输入提示词，如：帮我用 TypeScript 实现一个去重函数..."
+        />
+      </div>
     </>
   )
 }

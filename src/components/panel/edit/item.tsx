@@ -152,16 +152,21 @@ export interface DynEditKVProps {
 
 export const DynEditKV = ({ rows, onChange, emptyText }: DynEditKVProps) => {
   const currentNode = useNodeStore((state) => state.currentNode)
-  const nodes = useNodeStore((state) => state.nodes)
-  const edges = useNodeStore((state) => state.edges)
   const [modalVisible, setModalVisible] = React.useState(false)
 
-  const predecessors = currentNode ? getPredecessors(currentNode.id, edges) : []
+  // 只订阅「是否有上游」布尔结果，避免订阅 edges 数组（拖拽每帧变化）
+  const hasPredecessors = useNodeStore((state) =>
+    currentNode ? getPredecessors(currentNode.id, state.edges).length > 0 : false,
+  )
 
-  const treeData = React.useMemo(() => {
+  // 上游取值树序列化为字符串订阅，且仅在弹窗打开时才计算：拖拽节点时
+  // nodes/edges 每帧变化，关闭状态下恒返回 '[]'，避免每帧重渲染整个表格
+  const treeDataJson = useNodeStore((state) => {
+    if (!modalVisible || !currentNode) return '[]'
+    const predecessors = getPredecessors(currentNode.id, state.edges)
     const result: { key: Key; title: string; children?: any[] }[] = []
     for (const predId of predecessors) {
-      const node = nodes.find((n) => n.id === predId)
+      const node = state.nodes.find((n) => n.id === predId)
       if (node) {
         const nodeTitle = node.data.title || predId
         const children = buildTree(node.data, predId)
@@ -172,14 +177,20 @@ export const DynEditKV = ({ rows, onChange, emptyText }: DynEditKVProps) => {
         })
       }
     }
-    return result
-  }, [predecessors, nodes])
+    return JSON.stringify(result)
+  })
+  const treeData = React.useMemo<any[]>(
+    () => JSON.parse(treeDataJson),
+    [treeDataJson],
+  )
 
   const handlePick = (keys: Key[], rowKey: string) => {
     if (keys.length > 0) {
       const selectedKey = keys[0] as string
       const [nodeId, ...pathParts] = selectedKey.split('.')
-      const node = nodes.find((n) => n.id === nodeId)
+      const node = useNodeStore
+        .getState()
+        .nodes.find((n) => n.id === nodeId)
       if (node) {
         let current: any = node.data
         for (const part of pathParts) {
@@ -250,7 +261,7 @@ export const DynEditKV = ({ rows, onChange, emptyText }: DynEditKVProps) => {
                 }}
               />
             )}
-            {predecessors.length > 0 ? (
+            {hasPredecessors ? (
               <Button
                 type="text"
                 size="small"

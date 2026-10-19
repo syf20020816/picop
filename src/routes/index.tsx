@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import '@xyflow/react/dist/style.css'
+import { ReactFlowProvider } from '@xyflow/react'
 import { Flow } from '../components/flow'
 import styles from './index.module.scss'
 import 'antd/dist/antd.css'
@@ -106,9 +107,9 @@ function App() {
             onClick={() => setCollapsed(!collapsed)}
           >
             {collapsed ? (
-              <PanelLeftOpen size={16} />
+              <PanelLeftOpen color="white" size={16} />
             ) : (
-              <PanelLeftClose size={16} />
+              <PanelLeftClose color="white" size={16} />
             )}
           </div>
         </Sider>
@@ -116,7 +117,9 @@ function App() {
           {activeKey === 'workflow' && (
             <div className={styles.container}>
               <main className={styles.flow}>
-                <Flow />
+                <ReactFlowProvider>
+                  <Flow />
+                </ReactFlowProvider>
               </main>
             </div>
           )}

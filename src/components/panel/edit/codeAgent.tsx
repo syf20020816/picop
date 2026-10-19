@@ -1,12 +1,9 @@
 import { useNodeStore } from '#/store/node'
-import { useRouteStore } from '#/store/route'
 import type { NCodeAgent, NCodeAgentData } from '#/types'
 import type { NodeProps } from '@xyflow/react'
 import { Select, Typography } from 'antd'
 import { DynEditKV, DynEditKey } from './item'
 import type { DynEditKVRow } from './item'
-import { ToolSelect } from '#/components/select'
-
 const { Text } = Typography
 
 const d = (
@@ -18,8 +15,6 @@ export const EditCodeAgent = () => {
     (state) => state.currentNode,
   ) as NodeProps<NCodeAgent>
   const patchCurrentNode = useNodeStore((state) => state.patchCurrentNode)
-
-  const switchTo = useRouteStore((state) => state.switchTo)
 
   const mode = currentNode.data.mode ?? 'analyze'
 
@@ -65,33 +60,6 @@ export const EditCodeAgent = () => {
       inputType: 'number',
       min: 1,
       max: 100,
-    },
-    {
-      key: 'tool',
-      label: '本地工具',
-      valueRender: (onChange) => (
-        <ToolSelect
-          style={{ width: '100%' }}
-          value={currentNode.data.tool}
-          onChange={(toolId) => {
-            patchCurrentNode((draft) => {
-              d(draft).tool = toolId || undefined
-            })
-            onChange(toolId)
-          }}
-        />
-      ),
-      actionRender: (
-        <span style={{ fontSize: 11, color: '#888' }}>
-          <Text
-            type="secondary"
-            style={{ cursor: 'pointer', textDecoration: 'underline' }}
-            onClick={() => switchTo('model')}
-          >
-            管理
-          </Text>
-        </span>
-      ),
     },
   ]
 

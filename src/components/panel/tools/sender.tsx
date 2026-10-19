@@ -4,8 +4,7 @@ import { Sender } from '@ant-design/x'
 import { useState, useRef, useEffect } from 'react'
 import styles from '../index.module.scss'
 import { Flex, message as messageApi, Button, Tooltip } from 'antd'
-import { ToolSelect } from '#/components/select'
-import { fetchLocalTools } from '#/services/runner'
+import { useGlobalStore } from '#/store/global'
 import { buildWorkflow, applyWorkflow } from '#/services/flowBuilder'
 import type { ChatMessage } from '#/services/flowBuilder'
 import { DeleteOutlined } from '@ant-design/icons'
@@ -14,20 +13,11 @@ import { ChevronDown, ChevronUp } from 'lucide-react'
 export const SenderPanel = (props: PanelProps) => {
   const [loading, setLoading] = useState(false)
   const [value, setValue] = useState('')
-  const [selectedTool, setSelectedTool] = useState('')
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const scrollRef = useRef<HTMLDivElement>(null)
   const [collapse, setCollapse] = useState(true)
-
-  // 首次加载本地工具列表，自动选中第一个可用的
-  useEffect(() => {
-    fetchLocalTools().then((tools) => {
-      if (tools.length > 0) {
-        const first = tools.find((t) => t.available)
-        if (first) setSelectedTool(first.id)
-      }
-    })
-  }, [])
+  // 全流程统一使用全局本地工具（在执行面板顶部选择）
+  const localTool = useGlobalStore((state) => state.tool)
 
   // 消息变化时自动滚动到底部
   useEffect(() => {
@@ -38,8 +28,8 @@ export const SenderPanel = (props: PanelProps) => {
 
   const handleSubmit = async (content: string) => {
     if (!content.trim()) return
-    if (!selectedTool) {
-      messageApi.warning('请先选择本地工具（需启动本地 Runner）')
+    if (!localTool) {
+      messageApi.warning('请先在执行面板顶部选择本地工具（需启动本地 Runner）')
       return
     }
 
@@ -56,7 +46,7 @@ export const SenderPanel = (props: PanelProps) => {
     try {
       const { explanation, workflow } = await buildWorkflow(
         content,
-        selectedTool,
+        localTool,
         messages,
       )
       const aiMsg: ChatMessage = {
@@ -168,13 +158,7 @@ export const SenderPanel = (props: PanelProps) => {
             const { SendButton, LoadingButton } = components
 
             return (
-              <Flex justify="space-between" align="center">
-                <ToolSelect
-                  style={{ width: 200 }}
-                  value={selectedTool}
-                  onChange={(v) => setSelectedTool(v || '')}
-                />
-
+              <Flex justify="flex-end" align="center">
                 {loading ? (
                   <LoadingButton type="default" />
                 ) : (

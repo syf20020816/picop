@@ -296,7 +296,7 @@ export const EditPanel = (props: PanelProps) => {
       <div
         className={styles.panel}
         style={{
-          height: isShrink ? '92vh' : '48px',
+          height: isShrink ? 'calc(100vh - 120px)' : '48px',
         }}
       >
         <Tabs

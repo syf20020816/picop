@@ -1,4 +1,5 @@
 import type { NodeExecutionContext, NodeExecutionResult, NodeExecutor } from '#/types/engine'
+import { runnerFetch } from '#/services/runner'
 
 /**
  * AI 输出节点执行器
@@ -19,7 +20,7 @@ export const aiOutputExecutor: NodeExecutor = {
 
     if (outputPath) {
       try {
-        const res = await fetch('/api/execute/fileWrite', {
+        const res = await runnerFetch('/file-write', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ filePath: outputPath, content }),

@@ -31,11 +31,13 @@ const statusBadgeMap: Record<
 export const UNode = ({ node, children }: UNodeProps) => {
   const setCurrentNode = useNodeStore((state) => state.setCurrentNode)
   const mode = useGlobalStore((state) => state.globalMode)
-  const currentNode = useNodeStore((state) => state.currentNode)
-  const pipelineContext = useNodeStore((state) => state.pipelineContext)
+  // 只订阅本节点相关的原始值（选中态、运行状态），而不是 currentNode /
+  // pipelineContext 这类对象引用：否则点击任意节点或执行状态更新都会让所有节点重渲染。
+  const isChoose = useNodeStore((state) => state.currentNode?.id === node.id)
+  const nodeStatus = useNodeStore(
+    (state) => state.pipelineContext.nodeStatuses[node.id] ?? 'idle',
+  )
   const kind = node.type
-  const isChoose = currentNode !== null && currentNode.id === node.id
-  const nodeStatus = pipelineContext.nodeStatuses[node.id] ?? 'idle'
 
   return (
     <div

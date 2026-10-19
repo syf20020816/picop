@@ -4,7 +4,6 @@ import type { NodeProps } from '@xyflow/react'
 import { Typography, Divider, Input } from 'antd'
 import { DynEditKV } from './item'
 import { EditButton } from '#/components/button'
-import { ToolSelect } from '#/components/select'
 
 const { Text } = Typography
 
@@ -19,23 +18,6 @@ export const EditTaskPlanner = () => {
   const patchCurrentNode = useNodeStore((state) => state.patchCurrentNode)
 
   const rows = [
-    {
-      key: 'tool',
-      label: '本地工具',
-      valueRender: (onChange: (v: any) => void) => (
-        <ToolSelect
-          style={{ width: '100%' }}
-          placeholder="选择本地工具"
-          value={currentNode.data.tool}
-          onChange={(toolId) => {
-            patchCurrentNode((draft) => {
-              d(draft).tool = toolId || undefined
-            })
-            onChange(toolId)
-          }}
-        />
-      ),
-    },
     {
       key: 'prompt',
       label: '系统提示词',

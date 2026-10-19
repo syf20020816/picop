@@ -1,24 +1,16 @@
 import { useEffect, useState, useRef } from 'react'
 import { useNodeStore } from '#/store/node'
-import type { NKeywordAgent, NKeywordAgentData } from '#/types'
+import type { NKeywordAgent } from '#/types'
 import type { NodeProps } from '@xyflow/react'
 import { Typography, Divider } from 'antd'
-import { DynEditKV } from './item'
 import { CodeEditor } from '#/components/file-editor/editor'
-import { ToolSelect } from '#/components/select'
 
 const { Text } = Typography
-
-const d = (
-  draft: NonNullable<ReturnType<typeof useNodeStore.getState>['currentNode']>,
-) => draft.data as NKeywordAgentData
 
 export const EditKeywordAgent = () => {
   const currentNode = useNodeStore(
     (state) => state.currentNode,
   ) as NodeProps<NKeywordAgent>
-  const patchCurrentNode = useNodeStore((state) => state.patchCurrentNode)
-
   const formatValue = currentNode.data.format || '{\n  "keywords": string[]\n}'
   const [promptContent, setPromptContent] = useState('')
 
@@ -48,26 +40,6 @@ export const EditKeywordAgent = () => {
     setLocalFormat(formatValue)
   }, [formatValue])
 
-  const rows = [
-    {
-      key: 'tool',
-      label: '本地工具',
-      valueRender: (onChange: (v: any) => void) => (
-        <ToolSelect
-          style={{ width: '100%' }}
-          placeholder="选择本地工具"
-          value={currentNode.data.tool}
-          onChange={(toolId) => {
-            patchCurrentNode((draft) => {
-              d(draft).tool = toolId || undefined
-            })
-            onChange(toolId)
-          }}
-        />
-      ),
-    },
-  ]
-
   return (
     <>
       <div style={{ marginBottom: 8 }}>
@@ -75,13 +47,6 @@ export const EditKeywordAgent = () => {
           调用 AI 从上游内容中提取关键词列表，输出格式可由下方编辑器自定义
         </Text>
       </div>
-
-      <DynEditKV
-        rows={rows}
-        onChange={() => {
-          // tool 的变更已在 valueRender 中处理
-        }}
-      />
 
       {/* 输出格式编辑区 */}
       <Divider style={{ margin: '12px 0', fontSize: 12 }}>

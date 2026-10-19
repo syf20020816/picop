@@ -1,4 +1,4 @@
-# AI Workflow — AI 工作流可视化编排工具
+# PICOP — AI 工作流可视化编排工具
 
 基于 [BMad Method](https://bmadcodes.com/) + Lark CLI 构建的轻量化 AI 工作流编排工具，提供可视化节点编排能力，适合需要快速搭建 AI Agent 工作流的场景，避免 Dify 等重型平台的复杂性。
 
@@ -10,9 +10,72 @@
 
 1. **编排** — 用可视化 DAG 画布组合 20 种节点（需求分析 / 概设 / 任务拆解 / 编码 / 自检 / 知识库 / Lark 文档…），并在 Spec 模式下用脚印按钮**标记**每个节点的输出属于哪个工作流阶段（功能规格 / 技术方案 / 任务清单 / 自检报告…）。
 2. **验证** — 在画布上运行工作流验证编排是否正确（单节点调试 / PIN 固定 / 断点续跑 / 输出检查）。**AI 类节点的执行交给用户自己本机的 AI CLI 工具**（Claude Code / Codex CLI / DeepSeek Harness），平台不内置也不配置任何模型。
-3. **导出** — 编排与验证通过后，把工作流导出为 `workflow.yml`（类 speckit 格式），用户放入自己的 **Codex / Trae / Claude Code** 中执行。
+3. **导出** — 编排与验证通过后，把工作流导出为 4 种可执行产物之一（`speckit` / `openspec` / `spec` / `skill`），用户放入自己的 **Codex / Trae / Claude Code** 中执行。
 
 **Spec 分工（边界清晰）**：平台**不生产 specs/ 目录**——那是 openspec / speckit 等专业 spec 框架的职责。平台只做**阶段标记**（`specStep`），让用户在编排时无需手动输入 `/spec` 指令，导出后的 `workflow.yml` 携带标记，spec 框架据此自动生成 `specs/` 目录。
+
+---
+
+## 零编排成本接入：MCP + SKILL
+
+除了画布编排，用户还可以在自己的工具（Claude Code / Codex / Trae 等）中通过 **MCP + SKILL** 直达平台能力：把自然语言描述的工作流程一步转换为可执行产物并写入用户自己的项目目录——**无需打开画布、无需学习编排**。
+
+```
+用户工具（SKILL 指导 + MCP Client） → stdio MCP Server（runner/mcp.mjs，依赖本地 shared/export-core.mjs） → 本地 Runner（/agent-cli 生成 + /file-write 落盘） → 用户项目
+```
+
+- **`workflow_build`** — 把用户自然语言描述的流程交给本机 AI CLI（Claude Code / Codex / DeepSeek）转换为工作流定义 JSON（复用 `prompts/flowBuilder.md`；入参 `description` / `tool` / `timeoutMs`）
+- **`workflow_export`** — 把工作流定义全量导出为目录文件并写入用户项目：主工作流文件 + 各节点引用的输入物（userInput 静态内容 / Skill / Memory / BMad / Lark URL 清单 + lark-cli 技能）+ manifest.json（与画布 zip 同源，非 zip；入参 `workflow` / `name` / `targetDir` / `format` / `full`，`full` 缺省 true）：
+- **`workflow_save`** — 把工作流定义保存到 Picop 工作流模板库（与画布「保存工作流模板」共享同一存储，保存后可回画布加载/续编；入参 `workflow` / `name` / `description`）
+- **`workflow_list`** — 列出 Picop 已保存的工作流模板（仅名称 + 描述）
+
+| format            | 产物路径                                         | 适用场景                                             |
+| ----------------- | ------------------------------------------------ | ---------------------------------------------------- |
+| `speckit`（默认） | `specify/workflows/<name>/workflow.yml`          | SpecKit / Codex / Claude 中按命令步骤流水线执行      |
+| `openspec`        | `openspec/schemas/<name>/schema.yaml`            | OpenSpec 规范（artifacts 依赖图 + apply 跟踪）       |
+| `spec`            | `spec/changes/<name>/specs/<name>/workflow.yaml` | 同构 artifacts、无需安装 OpenSpec，任意 agent 直接读 |
+| `skill`           | `skills/<name>/SKILL.md`                         | 作为技能 `/name <prompt>` 触发                       |
+
+**接入方式（一次性）**：
+
+**形态 A：源码运行**（本机有 `ai-workflow` 源码）
+
+```bash
+# Claude Code
+claude mcp add picop -- node <ai-workflow>/runner/mcp.mjs
+# 其他工具（Codex 等）：在 .mcp.json 中注册，args 用绝对路径
+# { "mcpServers": { "picop": { "command": "node", "args": ["<ai-workflow>/runner/mcp.mjs"] } } }
+```
+
+> `<ai-workflow>` 是占位符，必须替换为本机真实绝对路径；可用 `find ~ -maxdepth 5 -type f -name mcp.mjs -path "*runner*"` 定位。
+
+**形态 B：已安装桌面应用**（只装了 Picop.app，无源码）
+
+打包后 `runner/mcp.mjs` 位于 App 包内，且**不假设机器装有系统 node**——直接复用 App 自带 Node：
+
+```json
+{
+  "mcpServers": {
+    "picop": {
+      "command": "/Applications/Picop.app/Contents/MacOS/Picop",
+      "args": ["/Applications/Picop.app/Contents/Resources/app/runner/mcp.mjs"],
+      "env": { "ELECTRON_RUN_AS_NODE": "1" }
+    }
+  }
+}
+```
+
+> Runner 由 App 主进程自动拉起，**保持 Picop 运行**即可（退出 App 会一并停掉 Runner）；`find ~` 搜不到 `/Applications`，形态 B 直接用上面的固定路径。
+
+平台分发技能 [`.skills/picop-mcp/SKILL.md`](.skills/picop-mcp/SKILL.md) 指导工具里的 AI 完成「build → export（或 save）→ 汇报」三步（含路径定位、4 种格式选型、输出物校验），并支持 `-s`/`--save`（保存到 Picop）与 `-l`/`--list`（列出已保存工作流）两个调用参数。四零原则全程保持：MCP server 跑在用户本机、无外部依赖，不存数据、不持凭据、不跑运行时，产物只写入用户指定的项目目录。
+
+画布与 MCP 互为补充：MCP 提供零成本入口，画布负责可视化验证与微调（同一工作流 JSON 可导入回画布）。
+
+> **注意**：MCP Server 是**常驻子进程**，改动 `runner/mcp.mjs` 后需让工具宿主**重新 spawn**（彻底退出工具 / 断开并重连 MCP），仅重开对话不会重启它。
+>
+> **MCP 入口会对 AI 输出做结构归一化**：flowBuilder 产出的顶层 `title` 归位到 `data.title`、下标式 `edges` 转为节点 id 引用，以对齐 `shared/export-core.mjs` 期望的严格结构（详见 `struct_mcp_skill.md`）。
+
+**进一步阅读**：[MCP + SKILL 零编排接入](picop-docs/docs/tutorial/mcp_skill.md)（使用教程）· [`struct_mcp_skill.md`](struct_mcp_skill.md)（实现原理 / 遇到的问题 / 架构整理）。
 
 ---
 
@@ -32,7 +95,7 @@
 ```
 
 - **平台（前端）** 不持有任何模型凭据、不做 shell 执行、不访问用户文件系统——只通过 Runner 提交请求并接收结果。
-- **Runner（本机）** 代用户执行：Lark 节点跑 `lark-cli`、AI 节点跑本机 CLI 工具（Claude Code / Codex / DeepSeek）、文件节点读写本地目录。凭据与订阅全留在用户机器。
+- **Runner（本机）** 代用户执行：Lark 节点跑 `lark-cli`、AI 节点跑本机 CLI 工具（Claude Code / Codex / DeepSeek）、文件节点写入本地目录、知识库远程 API 模式代理外部请求。凭据与订阅全留在用户机器。
 - **部署不含秘密**：服务器只需托管前端静态产物，无 API Key、无 model.conf、无 lark-cli 授权，天然解决多用户共享凭据与服务器无法访问用户本地文件的问题。
 
 ---
@@ -43,8 +106,11 @@
 # 安装依赖
 npm install
 
-# 启动开发服务器（端口 3030）
-npm run dev:all
+# 桌面端开发（Electron 窗口，自动拉起 Runner，不含文档）
+npm run dev
+
+# 纯浏览器开发（Web 模式，含 Runner 与文档，端口 3030）
+npm run dev:web
 
 # 生成路由（新增 API/页面路由后需要）
 npm run generate-routes
@@ -65,28 +131,27 @@ npm run generate-routes
 - **暗色主题** — Ant Design darkAlgorithm + React Flow 暗色适配
 - **节点选中高亮** — 选中节点蓝色边框
 
-### 2. 21 种工作流节点
+### 2. 19种工作流节点
 
-| 节点类型               | 标识                     | 用途                                                                                                                  |
-| ---------------------- | ------------------------ | --------------------------------------------------------------------------------------------------------------------- |
-| **用户输入节点**       | `userInput`              | 接受用户输入的文本、提示词、文件/URL 路径                                                                             |
-| **智能体节点**         | `agent`                  | 调用本机 AI CLI 工具（Claude / Codex / DeepSeek）进行分析和生成，接收上游所有输入 + 全链路累积上下文                  |
-| **BMad 角色节点**      | `bmadAgent`              | 赋予智能体特定角色指令（分析师/架构师/SM 等），内容同步到智能体（BMad 在上游、Agent 在下游，方向已修正）              |
-| **代码处理节点**       | `codeAgent`              | 用本机 AI CLI 直接在项目目录编码：`analyze`（只读分析）/ `batch`（按 tasks.md 分批写代码）双模式                      |
-| **任务拆解节点**       | `taskPlanner`            | 把上游概设输出的 plan 拆解为可独立执行的 batch 任务清单，产出 tasks.md                                                |
-| **自检 Agent 节点**    | `selfCheck`              | 独立会话评审：配置 BMad 角色注入评审身份，材料按 git diff / 上游累积产物自动降级，输出 PASS / CONDITIONAL_PASS / FAIL |
-| **关键词智能体节点**   | `keywordAgent`           | 从输入中提取关键词列表，供下游使用                                                                                    |
-| **知识库检索节点**     | `knowledgeRetrieval`     | 双模式：本地模式用本机 AI CLI（经其配置的 MCP）以自然语言查用户自己的知识库，可选挂一个 SKILL 作为查询指令；远程 API 模式编辑请求（URL / 方法 / Headers / Body）直调用户自己的知识库接口                                    |
-| **Lark 文档节点**      | `lark`                   | 读取/写入/创建飞书文档，通过 lark-cli 操作                                                                            |
-| **Lark 模板节点**      | `larkTemplate`           | 读取飞书文档作为内容模板，传递给下游                                                                                  |
-| **Lark Wiki 遍历节点** | `larkWikiTraversal`      | 遍历飞书知识库节点层级并读取文档内容                                                                                  |
-| **记忆节点**           | `memory`                 | 读写持久化记忆文件（markdown 格式），跨工作流传递上下文                                                               |
-| **Skill 节点**         | `skill`                  | 执行 BMad Skill（分析师/开发者等角色技能）                                                                            |
-| **回答节点**           | `answer`                 | 工作流暂停，等待用户输入后继续                                                                                        |
-| **AI 输出节点**        | `aiOutput`               | 展示最终输出结果                                                                                                      |
-| **判断节点**           | `if` / `ifCondition`     | 条件分支，根据上游输出匹配关键词或 AI 判断选择路径                                                                    |
-| **循环节点**           | `loop` / `loopCondition` | 循环迭代，支持计数器模式和上游数据驱动模式                                                                            |
-| **重试节点**           | `retry`                  | 捕获上游错误，支持关键词匹配和 AI 判断两种重试条件                                                                    |
+| 节点类型             | 标识                     | 用途                                                                                                                                                                                     |
+| -------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **用户输入节点**     | `userInput`              | 接受用户输入的文本、提示词、文件/URL 路径                                                                                                                                                |
+| **智能体节点**       | `agent`                  | 调用本机 AI CLI 工具（Claude / Codex / DeepSeek）进行分析和生成，接收上游所有输入 + 全链路累积上下文                                                                                     |
+| **BMad 角色节点**    | `bmadAgent`              | 赋予智能体特定角色指令（分析师/架构师/SM 等），内容同步到智能体（BMad 在上游、Agent 在下游，方向已修正）                                                                                 |
+| **代码处理节点**     | `codeAgent`              | 用本机 AI CLI 直接在项目目录编码：`analyze`（只读分析）/ `batch`（按 tasks.md 分批写代码）双模式                                                                                         |
+| **任务拆解节点**     | `taskPlanner`            | 把上游概设输出的 plan 拆解为可独立执行的 batch 任务清单，产出 tasks.md                                                                                                                   |
+| **自检 Agent 节点**  | `selfCheck`              | 独立会话评审：配置 BMad 角色注入评审身份，材料按 git diff / 上游累积产物自动降级，输出 PASS / CONDITIONAL_PASS / FAIL                                                                    |
+| **关键词智能体节点** | `keywordAgent`           | 从输入中提取关键词列表，供下游使用                                                                                                                                                       |
+| **知识库检索节点**   | `knowledgeRetrieval`     | 双模式：本地模式用本机 AI CLI（经其配置的 MCP）以自然语言查用户自己的知识库，可选挂一个 SKILL 作为查询指令；远程 API 模式编辑请求（URL / 方法 / Headers / Body）直调用户自己的知识库接口 |
+| **Lark 文档节点**    | `lark`                   | 读取/写入/创建飞书文档，通过 lark-cli 操作                                                                                                                                               |
+| **Lark 模板节点**    | `larkTemplate`           | 读取飞书文档作为内容模板，传递给下游                                                                                                                                                     |
+| **记忆节点**         | `memory`                 | 读写持久化记忆文件（markdown 格式），跨工作流传递上下文                                                                                                                                  |
+| **Skill 节点**       | `skill`                  | 执行 BMad Skill（分析师/开发者等角色技能）                                                                                                                                               |
+| **回答节点**         | `answer`                 | 工作流暂停，等待用户输入后继续                                                                                                                                                           |
+| **AI 输出节点**      | `aiOutput`               | 展示最终输出结果                                                                                                                                                                         |
+| **判断节点**         | `if` / `ifCondition`     | 条件分支，根据上游输出匹配关键词或 AI 判断选择路径                                                                                                                                       |
+| **循环节点**         | `loop` / `loopCondition` | 循环迭代，支持计数器模式和上游数据驱动模式                                                                                                                                               |
+| **重试节点**         | `retry`                  | 捕获上游错误，支持关键词匹配和 AI 判断两种重试条件                                                                                                                                       |
 
 ### 3. 节点操作
 
@@ -227,6 +292,16 @@ runner/
 │                           #   GET /task/:id   轮询任务
 │                           #   POST /lark      跑 lark-cli    POST /fs/* 文件读写
 │                           #   GET /models /model + /agent（遗留模型端点，待下线）
+├── mcp.mjs                 # stdio MCP Server（MCP + SKILL 接入入口，仅依赖本地 shared/export-core.mjs）
+│                           #   workflow_build：自然语言 → 工作流定义（复用 flowBuilder + /agent-cli）
+│                           #   workflow_export：工作流定义 → speckit/openspec/spec/skill 4 种产物
+│                           #                    （与画布共用导出核心，/file-write 落盘 + 路径穿越校验）
+shared/
+└── export-core.mjs         # 导出共享核心（纯 JS）：画布 exporter.ts 与 MCP workflow_export 共用，
+                            #   逻辑唯一来源，保证两处产物完全一致（+ export-core.d.mts 类型声明）
+.skills/
+├── picop-install/          # 分发技能：speckit 安装说明
+├── picop-mcp/              # 分发技能：MCP + SKILL 零编排成本接入（build → export → 汇报）
 src/
 ├── engine/
 │   ├── workflow.ts           # DAG 执行引擎（拓扑排序 + 分层并行 + 上下文累积）
@@ -303,8 +378,8 @@ src/
 │       │   ├── lark.ts           # Lark CLI
 │       │   ├── larkWikiTraversal.ts  # Lark Wiki 遍历
 │       │   ├── bmad.ts           # BMad（遗留 CLI 路由，已不主用）
-│       │   ├── httpProxy.ts      # 外部 HTTP 代理（知识库远程 API 模式跨域请求）
-│       │   ├── fileWrite.ts      # 文件写入（路径限定，防 AI 越界）
+│       │   ├── httpProxy.ts      # 外部 HTTP 代理（知识库远程 API 跨域；主路径已迁 Runner /http-proxy）
+│       │   ├── fileWrite.ts      # 文件写入（主路径已迁 Runner /file-write）
 │       │   └── models.ts         # 模型执行入口
 │       └── workflow/
 │           ├── pin.ts        # PIN 固定 (GET/POST/DELETE，按工作流分目录)
@@ -322,15 +397,18 @@ src/
 
 ```bash
 # 1. 本地 Runner（必要）：AI 类 / Lark / 文件节点的执行都经过它
-npm run runner            # 监听 127.0.0.1:7523
+node runner/server.mjs   # 监听 127.0.0.1:7523
 
-# 2. AI CLI 工具（AI 类节点）：任选其一并完成各自登录/配置
+# 2. MCP Server（可选，MCP + SKILL 接入时）：stdio 模式暴露 workflow_build / workflow_export
+node runner/mcp.mjs      # 配合分发技能 .skills/picop-mcp/ 使用
+
+# 3. AI CLI 工具（AI 类节点）：任选其一并完成各自登录/配置
 #    claude / codex / deepseek（Runner 会自动探测已安装项）
 
-# 3. Lark CLI（仅当工作流含 Lark 节点）
+# 4. Lark CLI（仅当工作流含 Lark 节点）
 lark-cli auth login
 
-# 4. BMad 无需安装 CLI —— 仅使用 .bmad/ 下的角色配置与指令（见「10. BMad集成与角色使用」）
+# 5. BMad 无需安装 CLI —— 仅使用 .bmad/ 下的角色配置与指令（见「10. BMad集成与角色使用」）
 ```
 
 ---
@@ -405,17 +483,17 @@ lark-cli auth login
 
 ### 按节点类型的字段提取（Token 优化）
 
-| 节点类型                 | 累积字段           | 丢弃字段                               |
-| ------------------------ | ------------------ | -------------------------------------- |
-| agent / codeAgent        | `response`         | model / usage / passThrough            |
-| keywordAgent             | `keywords`         | queries / raw                          |
+| 节点类型                 | 累积字段           | 丢弃字段                                            |
+| ------------------------ | ------------------ | --------------------------------------------------- |
+| agent / codeAgent        | `response`         | model / usage / passThrough                         |
+| keywordAgent             | `keywords`         | queries / raw                                       |
 | knowledgeRetrieval       | `retrievalContent` | count / mode / response / statusCode / responseJson |
-| userInput                | `text` / `prompt`  | files / urls                           |
-| larkTemplate             | `templateContent`  | templateUrl                            |
-| lark / larkWikiTraversal | `result`           | action / url / success                 |
-| memory                   | `content`          | —                                      |
-| bmadAgent                | `instructions`     | role / agentId                         |
-| 其他类型                 | 内容类字段回退     | 执行元数据                             |
+| userInput                | `text` / `prompt`  | files / urls                                        |
+| larkTemplate             | `templateContent`  | templateUrl                                         |
+| lark / larkWikiTraversal | `result`           | action / url / success                              |
+| memory                   | `content`          | —                                                   |
+| bmadAgent                | `instructions`     | role / agentId                                      |
+| 其他类型                 | 内容类字段回退     | 执行元数据                                          |
 
 ### 内容块优先级与预算截断
 
@@ -429,7 +507,7 @@ lark-cli auth login
 - **Runner 本地隔离** — 只绑定 `127.0.0.1`，CORS `Origin` 白名单（默认任意 localhost 端口 + `RUNNER_ALLOWED_ORIGINS` 可配部署域），阻止任意网页指挥本机 Runner
 - **命令模板化** — Runner 只按注册表 adapter 拼命令（不接收任意 shell 字符串），并预先收集 git diff / 指定 cwd，CLI 无权限需求
 - **路径穿越检测** — 文件读写校验 `..` 穿越
-- **知识库去平台化** — 平台不内置任何数据库（向量库 / 文档库 / 关系型 / 本地 md 目录都不内置），知识库检索节点只负责把查询交给用户自己的数据源：本地模式经用户本机 AI CLI 的 MCP 访问，远程 API 模式由后端 httpProxy 代理调用用户配置的接口（仅 URL / 方法 / Headers / Body，无凭据落库）；用户无需迁移数据
+- **知识库去平台化** — 平台不内置任何数据库（向量库 / 文档库 / 关系型 / 本地 md 目录都不内置），知识库检索节点只负责把查询交给用户自己的数据源：本地模式经用户本机 AI CLI 的 MCP 访问，远程 API 模式由本机 Runner 代理（`/http-proxy`，仅 URL / 方法 / Headers / Body，无凭据落库）；用户无需迁移数据
 - **文档上传限制** — ≤5MB，避免内存溢出
 
 ### PIN 调试机制

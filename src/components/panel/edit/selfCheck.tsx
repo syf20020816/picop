@@ -6,8 +6,6 @@ import { Select, Typography } from 'antd'
 import { DynEditKV } from './item'
 import type { DynEditKVRow } from './item'
 import { useEffect } from 'react'
-import { EditButton } from '#/components/button'
-import { ToolSelect } from '#/components/select'
 
 const { Text } = Typography
 
@@ -29,23 +27,6 @@ export const EditSelfCheck = () => {
   }, [])
 
   const rows: DynEditKVRow[] = [
-    {
-      key: 'tool',
-      label: '本地工具',
-      valueRender: (onChange) => (
-        <ToolSelect
-          style={{ width: '100%' }}
-          value={currentNode.data.tool}
-          onChange={(toolId) => {
-            patchCurrentNode((draft) => {
-              d(draft).tool = toolId || undefined
-            })
-            onChange(toolId)
-          }}
-        />
-      ),
-      actionRender: <EditButton.To url={'prompts'} />,
-    },
     {
       key: 'role',
       label: '视角 (BMad)',

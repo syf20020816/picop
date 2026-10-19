@@ -8,6 +8,7 @@ import { NodeHeader } from '../header'
 import { useNodeStore } from '#/store/node'
 import { NodeBuilder } from '#/types/builder'
 import type { ReactNode } from 'react'
+import { useMemo } from 'react'
 
 export interface AddNodeBtnProps {
   kind?: NodeType
@@ -54,19 +55,27 @@ export const AddNodeBtn = ({
   const currentNode = useNodeStore((state) => state.currentNode)
   const addConnectNode = useNodeStore((state) => state.addConnectNode)
   const addUnConnectNode = useNodeStore((state) => state.addUnConnectNode)
-
-  const pos = currentNode
-    ? {
-        x: currentNode.positionAbsoluteX,
-        y: currentNode.positionAbsoluteY,
-      }
-    : { x: 0, y: 0 }
+  const addPos = useNodeStore((state) => state.addPos)
+  const clearAddPos = useNodeStore((state) => state.clearAddPos)
 
   const addNode = (builderFn: (pos: { x: number; y: number }) => AppNode) => {
+    // 右键空白画布创建的节点落在右键位置；否则锚定当前节点（或 0,0）
+    const pos = addPos
+      ? { x: addPos.x, y: addPos.y }
+      : currentNode
+        ? {
+            x: currentNode.positionAbsoluteX,
+            y: currentNode.positionAbsoluteY,
+          }
+        : { x: 0, y: 0 }
     const node = builderFn(pos)
 
     if (!node) {
       return
+    }
+
+    if (addPos) {
+      clearAddPos()
     }
 
     if (!kind) {
@@ -76,16 +85,16 @@ export const AddNodeBtn = ({
     }
   }
 
-  const menuItems: MenuProps['items'] = [
+  // 菜单项用 useMemo 缓存：Flow 画布层也复用本组件包裹 ReactFlow，拖拽时
+  // Flow 每帧重渲染，若每帧重建 60+ 菜单元素会造成明显卡顿
+  const menuItems: MenuProps['items'] = useMemo(() => [
     {
       key: 'input',
       label: '输入节点',
       type: 'group',
       children: [
         {
-          label: (
-            <NodeHeader kind={NodeTypes.USER_INPUT} title="用户输入节点" />
-          ),
+          label: <NodeHeader kind={NodeTypes.USER_INPUT} title="输入节点" />,
           key: NodeTypes.USER_INPUT,
           disabled: isDisabledNode(kind, NodeTypes.USER_INPUT),
           onClick: () => addNode(NodeBuilder.userInput),
@@ -249,10 +258,13 @@ export const AddNodeBtn = ({
         },
       ],
     },
-  ]
+  ], [kind, addPos, currentNode, addConnectNode, addUnConnectNode, clearAddPos])
+
+  // menu 配置对象也保持引用稳定，避免 antd Dropdown 每帧重建菜单
+  const menuProps = useMemo<MenuProps>(() => ({ items: menuItems }), [menuItems])
 
   return (
-    <Dropdown menu={{ items: menuItems }} trigger={trigger}>
+    <Dropdown menu={menuProps} trigger={trigger}>
       {children ?? (
         <Button
           type="primary"

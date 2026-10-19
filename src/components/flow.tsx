@@ -1,5 +1,11 @@
-import { useEffect, useMemo } from 'react'
-import { ReactFlow, Background, MiniMap } from '@xyflow/react'
+import { useEffect, useMemo, useRef } from 'react'
+import {
+  ReactFlow,
+  Background,
+  MiniMap,
+  useReactFlow,
+  type Node,
+} from '@xyflow/react'
 import { Controls } from './controls'
 
 import { UserInputNode } from './node/user/input'
@@ -81,6 +87,24 @@ const EDGE_TYPES = {
   nodeEdge: NodeEdge,
 }
 
+// 右键菜单 trigger 常量：避免 Flow 每次渲染创建新数组导致子组件 props 变化
+const CONTEXT_MENU_TRIGGER: ('click' | 'contextMenu' | 'hover')[] = [
+  'contextMenu',
+]
+
+// MiniMap 节点颜色回调提升为模块级：拖拽每帧渲染 MiniMap 时保持 props 稳定
+const minimapNodeColor = (node: Node) =>
+  NODE_COLORS[(node.type ?? 'userInput') as NodeType] || NODE_COLORS.userInput
+
+/** 焦点在可编辑元素（输入框 / 文本域 / 下拉 / contenteditable 富文本）内时，交由系统原生复制粘贴 */
+function isEditableTarget(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null
+  if (!el || typeof el.closest !== 'function') return false
+  const tag = el.tagName?.toLowerCase()
+  if (tag === 'input' || tag === 'textarea' || tag === 'select') return true
+  return el.isContentEditable || Boolean(el.closest('[contenteditable]'))
+}
+
 export function Flow() {
   const nodes = useNodeStore((s) => s.nodes)
   const edges = useNodeStore((s) => s.edges)
@@ -89,6 +113,90 @@ export function Flow() {
   const onConnect = useNodeStore((s) => s.onConnect)
   const removeConnectedBmad = useNodeStore((s) => s.removeConnectedBmad)
   const setCurrentNode = useNodeStore((s) => s.setCurrentNode)
+  const setAddPos = useNodeStore((s) => s.setAddPos)
+  const clearAddPos = useNodeStore((s) => s.clearAddPos)
+  const setNodes = useNodeStore((s) => s.setNodes)
+  const setEdges = useNodeStore((s) => s.setEdges)
+  const { screenToFlowPosition } = useReactFlow()
+
+  // ---- 复制 / 粘贴选中节点（window 级监听，覆盖拖拽/选中任一状态）----
+  // 版本说明：当前 @xyflow/react 未内置 clipboard，故自实现；如后续升级到带
+  // useClipboard 的版本，需改为调用其方法，避免双重触发。
+  const copiedNodes = useRef<Node[]>([])
+  const pastedIdMap = useRef<Map<string, string>>(new Map())
+  const pasteOffset = useRef(0)
+
+  const handleCopyPaste = useMemo(
+    () => async (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey
+      const key = e.key.toLowerCase()
+      if (!mod || (key !== 'c' && key !== 'v')) return
+
+      // 输入框/富文本内不拦截，保留系统原生的文字复制粘贴
+      if (isEditableTarget(e.target)) return
+
+      const selectedNodes = useNodeStore
+        .getState()
+        .nodes.filter((n) => n.selected)
+      // 复制时无选中节点则不拦截（交给系统默认复制文本）；粘贴始终拦截
+      if (key === 'c' && selectedNodes.length === 0) return
+
+      e.preventDefault()
+
+      if (key === 'c') {
+        copiedNodes.current = selectedNodes
+      }
+      if (key === 'v') {
+        if (copiedNodes.current.length === 0) return
+        pasteOffset.current += 32
+        pastedIdMap.current = new Map()
+
+        const added = copiedNodes.current.map((node) => {
+          const newId = `${node.id}-copy-${Date.now()}-${Math.random()
+            .toString(36)
+            .slice(2, 7)}`
+          pastedIdMap.current.set(node.id, newId)
+          return {
+            ...node,
+            id: newId,
+            position: {
+              x: (node.position?.x ?? 0) + pasteOffset.current,
+              y: (node.position?.y ?? 0) + pasteOffset.current,
+            },
+            selected: true,
+          }
+        })
+
+        const copyEdges = useNodeStore
+          .getState()
+          .edges.filter(
+            (e) =>
+              pastedIdMap.current.has(e.source) &&
+              pastedIdMap.current.has(e.target),
+          )
+        const newEdges = copyEdges.map((edge) => ({
+          ...edge,
+          id: `${pastedIdMap.current.get(edge.source)}->${pastedIdMap.current.get(edge.target)}`,
+          source: pastedIdMap.current.get(edge.source) as string,
+          target: pastedIdMap.current.get(edge.target) as string,
+          selected: true,
+        }))
+
+        const state = useNodeStore.getState()
+        setNodes([
+          ...state.nodes.map((n) => ({ ...n, selected: false })),
+          ...added,
+        ])
+        setEdges([...state.edges, ...newEdges])
+      }
+    },
+    [setNodes, setEdges],
+  )
+
+  useEffect(() => {
+    window.addEventListener('keydown', handleCopyPaste)
+    return () => window.removeEventListener('keydown', handleCopyPaste)
+  }, [handleCopyPaste])
 
   // 监听 BMad 断开事件
   useEffect(() => {
@@ -115,7 +223,10 @@ export function Flow() {
   const panels = useMemo(
     () => (
       <>
-        <SenderPanel position="bottom-center" style={{ left: '40%' }}></SenderPanel>
+        <SenderPanel
+          position="bottom-center"
+          style={{ left: '40%' }}
+        ></SenderPanel>
         <StepLinePanel position="center-left"></StepLinePanel>
         <GroupPanel position="top-center"></GroupPanel>
         <Controls position="bottom-left"></Controls>
@@ -127,7 +238,7 @@ export function Flow() {
   )
 
   return (
-    <AddNodeBtn trigger={['contextMenu']}>
+    <AddNodeBtn trigger={CONTEXT_MENU_TRIGGER}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -140,16 +251,19 @@ export function Flow() {
         edgeTypes={EDGE_TYPES}
         deleteKeyCode="Delete"
         proOptions={{ hideAttribution: true }}
+        // 右键空白画布：记录右键位置的工作流坐标，供右键菜单创建节点时落位
+        onPaneContextMenu={(e) =>
+          setAddPos(screenToFlowPosition({ x: e.clientX, y: e.clientY }))
+        }
+        // 右键节点：清空待落位点，创建仍锚定到当前节点位置
+        onNodeContextMenu={() => clearAddPos()}
       >
         <Background />
         <MiniMap
           offsetScale={10}
           style={{ height: 120, width: 140, bottom: 36 }}
           position="bottom-left"
-          nodeColor={(node) =>
-            NODE_COLORS[(node.type ?? 'userInput') as NodeType] ||
-            NODE_COLORS.userInput
-          }
+          nodeColor={minimapNodeColor}
         />
         {panels}
       </ReactFlow>

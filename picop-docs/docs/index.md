@@ -17,5 +17,7 @@ features:
     description: 所见即所得，支持单节点调试、PIN 固定、断点续跑
   - title: PIN 机制
     description: 满足迭代调试场景，避免重复消耗 Token
+  - title: MCP + SKILL 零编排接入
+    description: 在自己的工具里用自然语言直接生成并导出工作流产物，无需打开画布、无需学习编排
     
 ---
