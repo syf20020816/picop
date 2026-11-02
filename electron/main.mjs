@@ -18,11 +18,13 @@ import { fileURLToPath } from 'node:url'
 import { DATA_DIR, DEV_SERVER_URL, ensureDataDir, isDev } from './paths.mjs'
 import { startRunner, stopRunner } from './runner-manager.mjs'
 import { startSsrServer } from './ssr-server.mjs'
+import { startDocsServer } from './docs-server.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 let mainWindow
 let ssrServer
+let docsServer
 
 function createWindow(url) {
   mainWindow = new BrowserWindow({
@@ -69,6 +71,8 @@ async function bootstrap() {
     return
   }
 
+  // 生产模式：内置文档站（127.0.0.1:4000）+ SSR 宿主；开发模式由 dev:all 另起 dumi
+  docsServer = await startDocsServer()
   ssrServer = await startSsrServer()
   createWindow(ssrServer.url)
 }
@@ -110,6 +114,7 @@ if (!gotLock) {
 
   app.on('before-quit', () => {
     stopRunner()
+    docsServer?.close()
     ssrServer?.close()
   })
 }

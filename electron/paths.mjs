@@ -34,6 +34,8 @@ export const APP_ROOT = app.getAppPath()
 export const SERVER_ENTRY = path.join(APP_ROOT, 'dist', 'server', 'server.js')
 export const CLIENT_DIR = path.join(APP_ROOT, 'dist', 'client')
 export const RUNNER_ENTRY = path.join(APP_ROOT, 'runner', 'server.mjs')
+/** 内置文档站产物（picop-docs 的 dumi 构建输出，由 build:docs 复制到 docs-site） */
+export const DOCS_DIR = path.join(APP_ROOT, 'docs-site')
 
 /** 可写数据目录：未打包直接用项目根；打包后用 userData 并在首次启动时播种 */
 export const DATA_DIR = isPackaged

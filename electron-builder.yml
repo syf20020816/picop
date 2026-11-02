@@ -25,6 +25,7 @@ electronLanguages:
 files:
   - electron/**/*
   - dist/**/*
+  - docs-site/**/*
   - runner/**/*
   - shared/**/*
   - prompts/**/*
