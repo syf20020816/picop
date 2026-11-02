@@ -11,17 +11,23 @@ order: 10
 
 ## 准备工作
 
-### 通过AI进行安装
+### 通过 AI 进行安装（推荐）
 
-将以下内容添加到 `.agent/skills/picop-install/SKILL.md` 中：
+把 App 内置的 `picop-install` 技能复制到你的工具 skills 目录，然后执行 `/picop-install` 即可一次装完所需 CLI：
 
 ```bash
-/picop-install
-
-/picop-install --speckit # 安装speckit和lark-cli
-/picop-install --openspec # 安装openspec和lark-cli
-/picop-install --all # 安装所有依赖
+# Claude Code（Codex 换 ~/.codex/skills，Trae 换 ~/.trae-cn/skills）
+mkdir -p ~/.claude/skills && cp -R "/Applications/Picop.app/Contents/Resources/app/.skills/picop-install" ~/.claude/skills/
 ```
+
+```bash
+/picop-install            # 默认：speckit + openspec + lark-cli
+/picop-install --speckit  # 只装 speckit + lark-cli
+/picop-install --openspec # 只装 openspec + lark-cli
+/picop-install --all      # 安装所有依赖
+```
+
+> 若你是源码运行，技能位于仓库 `.skills/picop-install/`，复制到同一位置即可。安装脚本已内置版本校验与登录提示，也可按下面的手动步骤逐项安装。
 
 ### spec-kit CLI（Specify 格式需要）
 

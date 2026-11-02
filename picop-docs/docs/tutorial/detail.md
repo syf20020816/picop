@@ -9,7 +9,7 @@ order: 3
 
 ---
 
-## 一、20 种节点详解
+## 一、节点详解（19 种类型）
 
 ### 1.1 输入与输出
 
@@ -251,6 +251,6 @@ config.toml → /api/bmad/agents（解析角色 + 附 skillContent = SKILL.md �
 | 如何做多角色评审？              | 创建多个 selfCheck 节点，各配一个 BMad 角色                                                                         |
 | 如何让长链路不丢上下文？        | 引擎自动 BFS 累积上游祖先，无需手动补线；预算截断时高优先级块优先保留                                               |
 | 为什么 codeAgent batch 不落盘？ | 平台只做编排验证，产物通过输出累积给下游，最终由用户自己的 Codex / Trae 执行                                        |
-| 如何让 AI 节点执行？            | 本机启动 Runner（`node runner/server.mjs`），安装 Claude Code / Codex / DeepSeek 任一，在节点编辑面板选「本地工具」 |
+| 如何让 AI 节点执行？            | 保持 Picop 运行（Runner 由 App 自动拉起；源码运行则 `node runner/server.mjs`），安装 Claude Code / Codex / DeepSeek 任一，在节点编辑面板选「本地工具」 |
 | 平台还需要配置模型吗？          | 不需要。AI 执行全部复用用户本机 CLI，平台不持有任何模型凭据                                                         |
 | 文档如何更新？                  | 本指南位于 `docs/` 目录，可直接在「编辑器」页修改，或由工作流生成                                                   |

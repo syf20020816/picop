@@ -4,6 +4,9 @@
 #   - asar: false —— SSR 产物（dist/server/server.js）会以原生 ESM import 方式加载
 #     顶层 node_modules 中的外部依赖（react / seroval / h3-v2 等），保留真实文件最稳。
 #   - 打包后 APP_ROOT = resources/app，数据目录切到 userData/data（见 electron/paths.mjs 播种逻辑）。
+#   - 仅面向 macOS Apple Silicon（arm64）内部署，未做 Developer ID 签名/公证：
+#     Gatekeeper 首次打开需右键「打开」，或执行
+#     xattr -dr com.apple.quarantine /Applications/Picop.app
 
 appId: com.picop.workflow
 productName: Picop
@@ -14,6 +17,11 @@ directories:
 
 asar: false
 
+# 只保留中英文，去掉 Electron 自带的其他语言 .lproj
+electronLanguages:
+  - en
+  - zh_CN
+
 files:
   - electron/**/*
   - dist/**/*
@@ -21,16 +29,42 @@ files:
   - shared/**/*
   - prompts/**/*
   - workflows/**/*
+  - '!workflows/result/**'
   - memory/**/*
   - .bmad/**/*
   - .skills/**/*
   - .lark/**/*
   - package.json
+  - '!**/.DS_Store'
+  - '!**/*.map'
+  # 以下为构建期依赖（由 @tanstack/react-start 插件链带入），运行期不需要：
+  #   @tanstack/* 已被 vite.ssr.noExternal 内联进 dist/server，客户端产物也已打包
+  #   vite / lightningcss / sass / prettier 仅参与构建
+  - '!node_modules/{vite,@vitejs,@tanstack,rolldown,@rolldown,lightningcss*,@parcel,@oxc,@unrs,sass,prettier,typescript,eslint,@typescript-eslint,vitest,@vitest,jsdom,@testing-library,concurrently,wait-on,caniuse-lite,browserslist,jiti,@babel/core,@babel/parser,@babel/traverse,@babel/generator,@babel/template,@babel/types}/**'
 
 mac:
+  # 仅输出 Apple Silicon（M 系列）包
   target:
-    - dmg
+    - target: dmg
+      arch:
+        - arm64
+  icon: build/icon.icns
   category: public.app-category.developer-tools
+  # 内部分发：无 Developer ID 时 electron-builder 会做 ad-hoc 签名，
+  # arm64 必须保留至少 ad-hoc 签名才能启动，因此不要设为 null。
+  hardenedRuntime: false
+  gatekeeperAssess: false
+
+dmg:
+  icon: build/icon.icns
+  iconSize: 110
+  contents:
+    - x: 150
+      y: 220
+    - x: 400
+      y: 220
+      type: link
+      path: /Applications
 
 win:
   target:

@@ -13,7 +13,7 @@ AI Workflow 是一个基于 **BMad Method** + **Lark CLI** 构建的轻量化 **
 
 本项目是一个**设计时（Design-time）编排平台**，不是最终工作流的运行时：
 
-1. **编排** — 用可视化 DAG 画布组合 20 种节点，并在 Spec 模式下用脚印按钮标记每个节点的输出属于哪个工作流阶段（功能规格 / 技术方案 / 任务清单 / 自检报告…）。
+1. **编排** — 用可视化 DAG 画布组合 19 种节点，并在 Spec 模式下用脚印按钮标记每个节点的输出属于哪个工作流阶段（功能规格 / 技术方案 / 任务清单 / 自检报告…）。
 2. **验证** — 在画布上运行工作流验证编排是否正确（单节点调试 / PIN 固定 / 断点续跑 / 输出检查）。AI 类节点的执行由用户本机上的 AI CLI 工具（Claude Code / Codex / DeepSeek）完成，平台不内置也不配置模型。
 3. **导出** — 编排与验证通过后，把工作流导出为 4 种可执行产物之一（`speckit` / `openspec` / `spec` / `skill`），放入自己的 **Codex / Trae / Claude Code** 中执行。此外还提供 **MCP + SKILL** 零编排成本入口：在自己的工具里用自然语言直接生成并导出产物（见 [MCP + SKILL 零编排接入](../tutorial/mcp_skill.md)）。
 
@@ -33,7 +33,7 @@ AI Workflow 是一个基于 **BMad Method** + **Lark CLI** 构建的轻量化 **
 
 - 平台不持有任何模型凭据、不做 shell 执行、不访问用户文件系统——凭据与订阅全留在用户机器
 - 服务器部署只需托管前端静态产物，无 API Key、无 model.conf，天然解决多用户共享凭据与服务器无法访问用户本地文件的问题
-- 使用前需本机启动 Runner：在 `ai-workflow` 目录执行 `node runner/server.mjs`
+- 使用前无需单独启动 Runner：**打开 Picop App 即自动拉起**（退出 App 会一并停止）；源码运行则在 `ai-workflow` 目录执行 `node runner/server.mjs`
 
 ## 设计哲学
 
@@ -69,14 +69,14 @@ runner/
 shared/
 └── export-core.mjs          # 导出共享核心：画布 exporter.ts 与 MCP workflow_export 共用，逻辑唯一来源
 .skills/
-├── picop-install/           # 分发技能：speckit 安装说明
-└── picop-mcp/               # 分发技能：MCP + SKILL 零编排成本接入
+├── picop-install/           # 分发技能：speckit / openspec / lark-cli 环境安装
+└── picop/                   # 分发技能：MCP + SKILL 零编排成本接入
 src/
 ├── engine/
 │   ├── workflow.ts           # DAG 执行引擎（拓扑排序 + 分层并行 + 上下文累积）
 │   ├── topological.ts        # 拓扑排序 / 分层 / 祖先链
 │   ├── accumulate.ts         # 上下文累积：按节点类型提取关键字段（Token 优化）
-│   └── executors/            # 20 种节点执行器
+│   └── executors/            # 各节点执行器（19 种节点类型）
 ├── components/
 │   ├── flow.tsx              # React Flow 画布
 │   ├── node/                 # 节点渲染组件
@@ -104,7 +104,7 @@ memory/                      # 记忆文件
 
 | 概念         | 说明                                                                                                              |
 | ------------ | ----------------------------------------------------------------------------------------------------------------- |
-| 节点（Node） | 工作流的最小单元，共 20 种类型（输入 / 智能体 / 角色 / 编码 / 拆解 / 自检 / 知识库 / Lark / 条件 / 循环 / 重试…） |
+| 节点（Node） | 工作流的最小单元，共 19 种类型（输入 / 智能体 / 角色 / 编码 / 拆解 / 自检 / 知识库 / Lark / 条件 / 循环 / 重试…） |
 | 连线（Edge） | 节点间的数据流，上游 output 自动传递为下游 input                                                                  |
 | 上下文累积   | 每个节点执行时 BFS 收集全部上游祖先节点，按类型提取"规范摘要"，保证线性链路不丢数据                               |
 | PIN          | 节点输出固定：保存执行结果到文件，支持从中间节点断点续跑                                                          |
@@ -113,6 +113,6 @@ memory/                      # 记忆文件
 
 ## 下一步
 
-- [快速上手](2.quickstart.md) — 5 分钟跑通第一个工作流
-- [深入指南](3.detail.md) — 节点、引擎、PIN、BMad 等原理详解
+- [快速入门](../tutorial/quickstart.md) — 安装 → 接入 MCP → 安装 SKILL → 跑通第一个工作流
+- [深入指南](../tutorial/detail.md) — 节点、引擎、PIN、BMad 等原理详解
 - [MCP + SKILL 零编排接入](../tutorial/mcp_skill.md) — 在自己的工具里用自然语言直接生成并导出工作流产物

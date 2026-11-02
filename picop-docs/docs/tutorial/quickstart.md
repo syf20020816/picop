@@ -5,11 +5,117 @@ order: 2
 
 # 快速上手（Quickstart）
 
-> **本指南带你从零开始，在 10 分钟内用可视化画布搭建并运行第一个 AI 工作流。**
+> Picop 有两种用法：**MCP + SKILL 零编排**（推荐先跑通，5 分钟拿到产物）和**画布编排**（可视化验证与微调）。
 >
-> 如果您需要更加详细的说明，请参考 [深入使用指南](./3/detail)。
+> 本页从安装开始，先带你跑通零编排链路，再介绍画布。更细的节点与引擎说明见 [深入指南](./detail)。
 
-## 0. 认识界面
+---
+
+## 1. 安装 Picop
+
+打开 `Picop-<version>-arm64.dmg`，把 Picop 拖进「应用程序」。仅支持 Apple Silicon（M 系列）。
+
+内部包未做 Apple 公证，首次打开会被 Gatekeeper 拦截，任选一种方式放行：
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Picop.app
+```
+
+或右键 App →「打开」→ 再次确认打开。
+
+首次启动会在 `~/Library/Application Support/picop/data` 初始化数据目录（工作流模板 / 记忆 / 提示词 / BMad 角色 / 技能），后续读写都在这里。
+
+## 2. 注册 MCP Server
+
+Picop 打开后会自动在本机拉起 Runner（`127.0.0.1:7523`），MCP 与画布执行都依赖它——**用之前保持 Picop 运行**：
+
+```bash
+curl http://127.0.0.1:7523/ping
+```
+
+把下面的配置加到你的 AI 工具（Claude Code / Codex / Trae / Cursor 均可）：
+
+```json
+{
+  "mcpServers": {
+    "picop": {
+      "command": "/Applications/Picop.app/Contents/MacOS/Picop",
+      "args": [
+        "/Applications/Picop.app/Contents/Resources/app/runner/mcp.mjs"
+      ],
+      "env": { "ELECTRON_RUN_AS_NODE": "1" }
+    }
+  }
+}
+```
+
+Claude Code 也可以一条命令注册：
+
+```bash
+claude mcp add picop -e ELECTRON_RUN_AS_NODE=1 -- \
+  "/Applications/Picop.app/Contents/MacOS/Picop" \
+  "/Applications/Picop.app/Contents/Resources/app/runner/mcp.mjs"
+```
+
+> 用 App 自带的 Node 执行 MCP Server（`ELECTRON_RUN_AS_NODE=1`），**不要求系统安装 node**。App 不在 `/Applications` 时替换为实际路径。
+
+## 3. 安装 Picop SKILL
+
+把 App 内置的分发技能复制到你的工具 skills 目录（按你用的工具选一条）：
+
+```bash
+# Claude Code
+mkdir -p ~/.claude/skills && cp -R "/Applications/Picop.app/Contents/Resources/app/.skills/picop" ~/.claude/skills/
+
+# Codex
+mkdir -p ~/.codex/skills && cp -R "/Applications/Picop.app/Contents/Resources/app/.skills/picop" ~/.codex/skills/
+
+# Trae
+mkdir -p ~/.trae-cn/skills && cp -R "/Applications/Picop.app/Contents/Resources/app/.skills/picop" ~/.trae-cn/skills/
+```
+
+技能负责「build → export → 汇报」三步，并支持三个参数：
+
+| 参数                             | 作用                                      |
+| -------------------------------- | ----------------------------------------- |
+| `-o speckit/openspec/spec/skill` | 指定导出格式（默认 `speckit`）            |
+| `-s` / `--save`                  | 生成后只保存到 Picop 模板库，不写项目目录 |
+| `-l` / `--list`                  | 只列出 Picop 已保存的工作流名称与描述     |
+
+> 另外本机需装有任一 AI CLI（`claude` / `codex` / `deepseek`）：生成工作流与 AI 节点执行都用它，凭据留你自己的机器。
+
+## 4. 一句话生成并导出工作流
+
+在工具里直接描述流程，例如：
+
+```text
+把这段流程做成工作流并导出到 /Users/me/project：读取飞书需求文档 → 分析需求 → 输出技术方案
+```
+
+AI 会先返回对流程的理解（`explanation`），确认后写入你的项目：
+
+```
+specify/workflows/<name>/
+├── workflow.yml          # 主工作流文件
+├── ...                   # 各节点引用的输入物（userInput / Skill / Memory / BMad / Lark URL 清单）
+└── manifest.json
+```
+
+- 想换个格式执行：`-o openspec` / `-o spec` / `-o skill`
+- 只想先存起来回画布调整：`-s`
+- 看已保存了哪些：`-l`
+
+> 若工作流要按 speckit / openspec 执行，或包含 Lark 节点，再装运行时：把 `.skills/picop-install` 复制到同一 skills 目录，执行 `/picop-install`（详见 [工作流执行](../run/index.md)）。
+
+MCP 四个工具的完整说明与常见问题见 [MCP + SKILL 零编排接入](./mcp_skill)。
+
+---
+
+## 5. 在画布上编排
+
+MCP 生成的工作流可以存进 Picop 模板库回画布继续编排；画布也能导出 JSON 交给 MCP / 工具执行。
+
+### 5.1 认识界面
 
 左侧导航栏包含六个功能页：
 
@@ -22,75 +128,55 @@ order: 2
 | 编辑器     | 项目文件编辑器（提示词 / 记忆 / 工作流 JSON / 技能） |
 | 文档       | 本使用与学习指南（docs 目录，即当前页面）            |
 
-## 1. 如何创建节点
+### 5.2 如何创建节点
 
-在工作流编排中，使用鼠标右击画布空白处，您可以添加以下类型的节点：
+在工作流编排中，鼠标右击画布空白处即可添加节点：
 
 ![节点类型](../imgs/nodes.png)
 
-## 2. 保存工作流
+### 5.3 保存工作流
 
-当您完成工作流后，在左上角你可以看到四个按钮，点击最后一个保存工作流按钮对当前工作流进行保存
+完成编排后，点击左上角四个按钮中的最后一个「保存工作流」：
 
 ![保存工作流](../imgs/workflow_save.png)
 
-接下来为你的工作流起一个名称，点击保存按钮即可。
+为工作流起名后保存。
 
-## 3. 准备运行环境（启动本地 Runner）
+### 5.4 单步执行与运行调试
 
-AI 类节点、Lark 节点、文件节点的执行都由你本机的 **Runner 服务** 完成，平台不持有任何模型凭据。开始运行前，请先在本机启动 Runner：
-
-```bash
-# 使用 codex cli
-codex
-# 使用 deepseek cli
-deepseek
-```
-
-Picop自动探测 Runner 是否在线。AI 类节点还需要本机装有 AI CLI 工具（Claude Code / Codex / DeepSeek 任选其一）——编辑面板的「本地工具」下拉会自动探测已安装项。
-
-## 4. 单步执行与运行调试
-
-当你点击节点上的运行按钮时，该节点会立即执行，直到完成。这是单步执行。
+点击节点上的运行按钮会立即执行该节点（单步执行）：
 
 ![单步执行](../imgs/node_run.png)
 
-如果你想运行整个工作流，点击执行面板的「运行」按钮。这会将所有节点按连线顺序执行，直到所有节点完成。
-执行完成后你可以在右侧面板中查看每个节点的输出结果。
+点击执行面板的「运行」按连线顺序执行整个工作流，完成后可在右侧查看每个节点的输出：
 
 ![工作流运行](../imgs/workflow_run.png)
 
-## 5. 导出真实工作流
+### 5.5 导出真实工作流
 
-在左上角的四个按钮中，点击第三个按钮「导出工作流」。
+点击左上角第三个按钮「导出工作流」：
 
 ![导出工作流](../imgs/export.png)
 
-接下来选择你需要的导出参数，进行导出即可，导出参数说明如下：
+导出参数：
 
-| 导出参数     | 说明                                                                                                                                                                                                                                                                                                                   |
-| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 目标平台     | 1. Picop：Picop 平台，如果你想将本平台的工作流保存到本地，进行重复使用，选择这个选项，但无法让你得到能执行的工作流文件 <br /> 2. Speckit: 用于在 spec-kit 平台运行的工作流文件 <br /> 3. OpenSpec: 用于在 OpenSpec 平台运行的工作流文件 <br /> 4. Spec: 用于在你不安装任何Spec平台情况下，能够让AI识别运行的工作流文件 |
-| 导出模式     | 1. 仅导出workflow.yml：如果您只是想单纯获取一个没有任何输入物，或依据这个工作流进行修改，选择这个选项。 <br /> 2. 全量导出zip：包含输入物、Skill、BMad 角色文件等，如果您需要在其他工具中直接运行这个工作流，选择这个选项。                                                                                            |
-| 合并并行步骤 | 是否合并并行步骤，对于Speckit，OpenSpec实际都是串行的，选择这个选项后，会将并行节点合并为一个步骤。                                                                                                                                                                                                                    |
+| 导出参数     | 说明                                                                                                                                                                                                                              |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 目标平台     | 1. Picop：保存到本平台，供重复使用（不能在其他工具执行）<br />2. Speckit：spec-kit 平台可运行的工作流文件<br />3. OpenSpec：OpenSpec 平台可运行的工作流文件<br />4. Spec：不安装任何 Spec 平台、让 AI 直接识别运行的工作流文件 |
+| 导出模式     | 1. 仅导出 workflow.yml：只需要一个主文件，或准备基于它修改<br />2. 全量导出 zip：包含输入物、Skill、BMad 角色文件等，需要直接在其他工具运行时选择                                                                                  |
+| 合并并行步骤 | Speckit / OpenSpec 实际是串行执行，勾选后会把并行节点合并为一个步骤                                                                                                                                                                |
 
 ![导出参数](../imgs/export_spec.png)
 
-你将得到一个能够在其他工具（Trae、Cursor、Codex、Claude Code 等）中运行的工作流文件，目前分为三种格式：
+导出后得到的工作流文件才是可在其他工具（Trae、Cursor、Codex、Claude Code 等）中运行的产物：
 
-| 格式     | 特点                                                                   | 执行方式                                                       |
-| -------- | ---------------------------------------------------------------------- | -------------------------------------------------------------- |
-| OpenSpec | artifacts 依赖图（proposal/design/tasks），含类型兜底与 tasks 自动补全 | 通过 `/opsx:*` 斜杠命令触发，需安装 OpenSpec 或 agent 内置支持 |
-| Speckit  | 命令步骤流水线（workflow\.yml），含 gate/分支/循环                     | 通过 `specify workflow run` 引擎执行，需安装 spec-kit CLI      |
-| Spec     | 简化版 artifacts 依赖图（spec/plan/tasks），只认手动标注，不做推断补充 | 无需安装框架，解压后把 `spec/` 目录交给任意 AI agent 直接执行  |
+| 格式     | 特点                                                                    | 执行方式                                                       |
+| -------- | ----------------------------------------------------------------------- | -------------------------------------------------------------- |
+| OpenSpec | artifacts 依赖图（proposal/design/tasks），含类型兜底与 tasks 自动补全  | 通过 `/opsx:*` 斜杠命令触发，需安装 OpenSpec 或 agent 内置支持 |
+| Speckit  | 命令步骤流水线（workflow.yml），含 gate/分支/循环                       | 通过 `specify workflow run` 引擎执行，需安装 spec-kit CLI      |
+| Spec     | 简化版 artifacts 依赖图（spec/plan/tasks），只认手动标注，不做推断补充  | 无需安装框架，解压后把 `spec/` 目录交给任意 AI agent 直接执行  |
 
-每种格式均可导出为纯工作流文件（yaml）或全量 zip 包（含输入物、Skill、BMad 角色文件等）。
-
-> **注意：**
->
-> 这个工作流文件才是你可以在其他工具中运行的工作流文件，所以请不要将本系统作为最终运行环境。
->
-> 如何使用工作流请参考：[执行工作流](../run/index.md)。
+> **注意**：Picop 是编排与验证工具，不是最终运行环境；执行方式见 [执行工作流](../run/index.md)。
 
 ---
 
@@ -99,8 +185,8 @@ Picop自动探测 Runner 是否在线。AI 类节点还需要本机装有 AI CLI
 一个完整的工作流需要包含：
 
 1. 至少一个输入节点，用于告诉模型需要做什么
-2. 一个或多个处理节点，处理节点一般指Agent相关节点，用于执行具体的任务
-3. 0个或多个输出节点，用于将处理结果输出给用户或后续节点
+2. 一个或多个处理节点，一般指 Agent 相关节点，用于执行具体任务
+3. 0 个或多个输出节点，把处理结果交给用户或后续节点
 
 ```json
 {
@@ -277,7 +363,6 @@ Picop自动探测 Runner 是否在线。AI 类节点还需要本机装有 AI CLI
       },
       "deletable": true,
       "draggable": true,
-      "dragging": false,
       "selectable": true,
       "selected": false,
       "zIndex": 1,
@@ -302,7 +387,6 @@ Picop自动探测 Runner 是否在线。AI 类节点还需要本机装有 AI CLI
       },
       "deletable": true,
       "draggable": true,
-      "dragging": false,
       "selectable": true,
       "selected": false,
       "zIndex": 1,
@@ -370,20 +454,22 @@ Picop自动探测 Runner 是否在线。AI 类节点还需要本机装有 AI CLI
 }
 ```
 
+---
+
 ## 7. 常见问题
 
 | 问题                           | 处理                                                                                                                                       |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| 智能体节点报错"未选择本地工具" | 确认本机已启动 Runner（`node runner/server.mjs`）且安装了 AI CLI 工具，再到节点编辑面板选择「本地工具」                                    |
-| 本地工具下拉为空               | 检查本机是否安装了 claude / codex / deepseek 之一，且 Runner 在线（`GET /ping`）                                                           |
+| 首次打开提示「无法验证开发者」 | 右键 App →「打开」，或执行 `xattr -dr com.apple.quarantine /Applications/Picop.app`                                                        |
+| MCP 工具不可见 / 连接失败      | 确认 Picop 正在运行（`curl http://127.0.0.1:7523/ping`），并检查 MCP 配置是否指向 App 内的 `runner/mcp.mjs` 绝对路径                       |
+| 智能体节点报错"未选择本地工具" | 确认本机装了 claude / codex / deepseek 之一，再到节点编辑面板选择「本地工具」                                                               |
 | 执行卡在 Answer 节点           | 该节点等待用户输入，编辑面板填写后继续                                                                                                     |
-| Lark 节点失败                  | 确认 Runner 已启动，且宿主机已 `lark-cli auth login`                                                                                       |
+| Lark 节点失败                  | 确认 Runner 在线，且宿主机已 `lark-cli auth login`                                                                                         |
 | 知识库检索无结果               | 本地模式：确认所选本地工具已配置访问你知识库的 MCP，且 Runner 在线；远程 API 模式：确认请求 URL / 方法 / Headers / Body 配置正确、接口可达 |
 
 ## 下一步
 
-- [项目概览](overview.md) — 平台定位与架构
-
-- [MCP + SKILL 零编排接入](mcp_skill.md) — 不打开画布，在自己的工具里用自然语言直接生成并导出工作流产物
-
-- [深入指南](detail.md) — 20 种节点、执行引擎、PIN、BMad、优化策略
+- [MCP + SKILL 零编排接入](./mcp_skill) — 不打开画布，用自然语言直接生成并导出工作流产物
+- [深入指南](./detail) — 节点、执行引擎、PIN、BMad、优化策略
+- [执行工作流](../run/index.md) — 导出后在不同工具中运行
+- [项目概览](../overview/index.md) — 平台定位与架构

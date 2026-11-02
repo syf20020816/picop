@@ -8,6 +8,8 @@ order: 4
 > 除了在画布上拖拽编排，你还可以在**自己的 AI 工具**（Claude Code / Codex / Trae 等）里，用一句自然语言把工作流程直接变成**可执行产物**并写进你自己的项目目录——**无需打开画布、无需学习编排**。
 >
 > 若你想了解这一能力的实现原理、遇到的问题与架构细节，请阅读项目根目录的 `struct_mcp_skill.md`。
+>
+> 首次接入只需三步：**安装 Picop → 复制 MCP 配置 → 安装 Picop SKILL**（下文第二、三、四节）。
 
 ---
 
@@ -35,30 +37,51 @@ Picop 通过 **MCP（Model Context Protocol）+ SKILL** 把平台能力直连到
 
 ---
 
-## 二、前置条件
+## 二、安装与前置条件
 
 首次使用前，请确认以下三项：
 
-1. **Picop Runner 已在 `127.0.0.1:7523` 运行**，按 Picop 形态二选一：
-
-   - **源码运行**：在 `ai-workflow` 目录执行 `node runner/server.mjs`。
-   - **已安装桌面应用**：打开 Picop App 即可（Runner 由 App 主进程自动拉起；退出 App 会一并停止）。
-
-   可用以下命令验证：
+1. **Picop 已安装并保持运行**。打开 App 即自动拉起 Runner（`127.0.0.1:7523`），退出 App 会一并停止。验证：
 
    ```bash
    curl http://127.0.0.1:7523/ping
    ```
 
+   > 源码运行方式（本机有 `ai-workflow` 源码）则在项目目录执行 `node runner/server.mjs`。
+
 2. **本机已安装任一 AI CLI 工具**：Claude Code（`claude`）/ Codex（`codex`）/ DeepSeek Harness（`deepseek`）——`workflow_build` 会用它生成工作流。
 
-3. **MCP Server 已在你的工具中注册**（见下一节，执行一次即可）。
+3. **MCP Server 已注册、Picop SKILL 已安装**（见下两节，各执行一次即可）。
 
 ---
 
 ## 三、注册 MCP Server（一次性）
 
-注册形态必须与你的 Picop 形态一致。
+### 形态 B：已安装桌面应用（推荐）
+
+打包后 `runner/mcp.mjs` 位于 App 包内，且**不假设机器装有系统 node**——直接复用 App 自带 Node（`ELECTRON_RUN_AS_NODE=1`）：
+
+```json
+{
+  "mcpServers": {
+    "picop": {
+      "command": "/Applications/Picop.app/Contents/MacOS/Picop",
+      "args": ["/Applications/Picop.app/Contents/Resources/app/runner/mcp.mjs"],
+      "env": { "ELECTRON_RUN_AS_NODE": "1" }
+    }
+  }
+}
+```
+
+**Claude Code** 可用一条命令：
+
+```bash
+claude mcp add picop -e ELECTRON_RUN_AS_NODE=1 -- \
+  "/Applications/Picop.app/Contents/MacOS/Picop" \
+  "/Applications/Picop.app/Contents/Resources/app/runner/mcp.mjs"
+```
+
+> **不要用 `command: node`**：已安装 App 的机器未必有系统 node；`find ~` 也搜不到 `/Applications`，直接使用上面的固定路径（App 未装在 `/Applications` 时换成实际路径）。Runner 由 App 自动拉起，**保持 Picop 运行**即可。
 
 ### 形态 A：源码运行（本机有 `ai-workflow` 源码）
 
@@ -89,30 +112,34 @@ claude mcp add picop -- node <上面定位到的 mcp.mjs 绝对路径>
 }
 ```
 
-### 形态 B：已安装桌面应用（只装了 `Picop.app`，无源码）
+---
 
-打包后 `runner/mcp.mjs` 位于 App 包内，且**不假设机器装有系统 node**——直接复用 App 自带 Node（`ELECTRON_RUN_AS_NODE=1`）最稳：
+## 四、安装 Picop SKILL（一次性）
 
-```json
-{
-  "mcpServers": {
-    "picop": {
-      "command": "/Applications/Picop.app/Contents/MacOS/Picop",
-      "args": ["/Applications/Picop.app/Contents/Resources/app/runner/mcp.mjs"],
-      "env": { "ELECTRON_RUN_AS_NODE": "1" }
-    }
-  }
-}
+把 App 内置的分发技能复制到你的工具 skills 目录（按你用的工具选一条）：
+
+```bash
+# Claude Code
+mkdir -p ~/.claude/skills && cp -R "/Applications/Picop.app/Contents/Resources/app/.skills/picop" ~/.claude/skills/
+
+# Codex
+mkdir -p ~/.codex/skills && cp -R "/Applications/Picop.app/Contents/Resources/app/.skills/picop" ~/.codex/skills/
+
+# Trae
+mkdir -p ~/.trae-cn/skills && cp -R "/Applications/Picop.app/Contents/Resources/app/.skills/picop" ~/.trae-cn/skills/
 ```
 
-> **不要用 `command: node`**：已安装 App 的机器未必有系统 node；`find ~` 也搜不到 `/Applications`，直接使用上面的固定路径（App 未装在 `/Applications` 时换成实际路径）。Runner 由 App 自动拉起，**保持 Picop 运行**即可。
+源码运行时技能位于仓库 `.skills/picop/`，把该目录复制到同一位置即可。
+
+装完后在工具里 `/picop` 触发（或直接说「生成一个 … 工作流」）。
 
 ---
 
-## 四、使用流程
+## 五、使用流程
 
-把「生成工作流 / 搭建工作流 / 把流程导出到项目」的意图交给工具里的 AI，分发技能 `.skills/picop-mcp/SKILL.md` 会指导它完成。分发技能支持三个调用参数（附加在描述后，二选一）：
+把「生成工作流 / 搭建工作流 / 把流程导出到项目」的意图交给工具里的 AI，分发技能 `.skills/picop/SKILL.md` 会指导它完成。分发技能支持三个调用参数（附加在描述后）：
 
+- **`-o` / `--output <format>`** — 指定导出格式：`speckit`（默认）/ `openspec` / `spec` / `skill`。示例：`生成周报工作流 -o skill`。
 - **`-s` / `--save`** — 生成后**保存到 Picop 工作流模板库**（调用 `workflow_save`），不导出到项目目录。示例：`生成一个每周晨会纪要工作流 -s`。
 - **`-l` / `--list`** — **只列出** Picop 已保存的工作流名称与描述（调用 `workflow_list`），不生成、不导出。
 - 不带参数 — 默认导出模式（下述流程）。
@@ -136,7 +163,7 @@ AI 会列出保存结果（`-s`）/ 已保存工作流列表（`-l`）/ 实际�
 
 ---
 
-## 五、四种导出格式
+## 六、四种导出格式
 
 | format            | 产物路径                                         | 适用场景                                                | 执行方式                                                            |
 | ----------------- | ------------------------------------------------ | ------------------------------------------------------- | ------------------------------------------------------------------- |
@@ -149,7 +176,7 @@ AI 会列出保存结果（`-s`）/ 已保存工作流列表（`-l`）/ 实际�
 
 ---
 
-## 六、输出物校验
+## 七、输出物校验
 
 - 本能力的**合法输出物有以下 5 类**：
   - 保存到 Picop 工作流模板库（`workflow_save`，供画布加载/续编）
@@ -161,7 +188,7 @@ AI 会列出保存结果（`-s`）/ 已保存工作流列表（`-l`）/ 实际�
 
 ---
 
-## 七、常见问题
+## 八、常见问题
 
 | 问题                                   | 处理                                                                                                                   |
 | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |

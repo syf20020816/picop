@@ -12,7 +12,7 @@
     "dev:all": "concurrently -k -n vite,docs,electron -c cyan,magenta,green \"NODE_OPTIONS='--max-old-space-size=8192' vite dev --port 3030\" \"npm run dev --prefix picop-docs\" \"wait-on tcp:127.0.0.1:3030 && ELECTRON_DEV=1 electron .\"",
     "dev:web": "concurrently -k -n vite,runner,docs -c cyan,green,magenta \"NODE_OPTIONS='--max-old-space-size=8192' vite dev --port 3030\" \"node runner/server.mjs\" \"npm run dev --prefix picop-docs\"",
     "generate-routes": "tsr generate",
-    "build": "vite build && electron-builder",
+    "build": "vite build && electron-builder --publish never",
     "start": "electron .",
     "check": "prettier --check .",
     "format": "prettier --write . && eslint --fix",

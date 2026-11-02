@@ -6,7 +6,7 @@
 2. **遇到什么问题** —— 落地过程中暴露的缺陷与修复
 3. **架构整理** —— 分层、数据流、模块职责与契约边界
 
-> 面向读者：平台维护者。使用说明请见 [`picop-docs/docs/tutorial/mcp_skill.md`](picop-docs/docs/tutorial/mcp_skill.md) 与 [`.skills/picop-mcp/SKILL.md`](.skills/picop-mcp/SKILL.md)。
+> 面向读者：平台维护者。使用说明请见 [`picop-docs/docs/tutorial/mcp_skill.md`](picop-docs/docs/tutorial/mcp_skill.md) 与 [`.skills/picop/SKILL.md`](.skills/picop/SKILL.md)。
 
 ---
 
@@ -24,7 +24,7 @@
 | 导出共享核心 | [`shared/export-core.mjs`](shared/export-core.mjs)                                                         | 纯 JS 导出逻辑唯一来源，画布与 MCP 共用（+ `export-core.d.mts` 类型声明） |
 | 薄转发层     | [`src/services/exporter.ts`](src/services/exporter.ts)                                                     | 画布侧仅 re-export 共享核心，不再自带导出逻辑                             |
 | 生成契约     | [`prompts/flowBuilder.md`](prompts/flowBuilder.md)                                                         | 自然语言 → 工作流定义的提示词契约（21 种节点类型）                        |
-| 分发技能     | [`.skills/picop-mcp/SKILL.md`](.skills/picop-mcp/SKILL.md)                                                 | 指导工具里的 AI 完成「build → export → 汇报」三步                         |
+| 分发技能     | [`.skills/picop/SKILL.md`](.skills/picop/SKILL.md)                                                 | 指导工具里的 AI 完成「build → export → 汇报」三步                         |
 | 启动命令     | `node runner/mcp.mjs`                                                                                      | 启动 stdio MCP Server                                                     |
 | 平台文档     | [`README.md`](README.md)、[`picop-docs/docs/tutorial/mcp_skill.md`](picop-docs/docs/tutorial/mcp_skill.md) | 接入说明与使用指南                                                        |
 
@@ -99,7 +99,7 @@ MCP Server 跑在用户本机、无外部依赖：**不存数据、不持凭据�
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
 │ 用户工具（Claude Code / Codex / Trae …）                                 │
-│   ├─ SKILL：.skills/picop-mcp/SKILL.md    ← 触发判定 + 三步流程 + 选型    │
+│   ├─ SKILL：.skills/picop/SKILL.md    ← 触发判定 + 三步流程 + 选型    │
 │   └─ MCP Client：读取 tools/list，调用 tools/call                       │
 └───────────────────────────────┬──────────────────────────────────────┘
                                 │ stdio（newline-delimited JSON-RPC 2024-11-05）
@@ -157,7 +157,7 @@ workflow { nodes, edges }  ← 注意：此处为 flowBuilder 的「宽松结构
 | `src/services/exporter.ts`   | 画布侧薄转发                                      | 不再自带任何导出逻辑                        |
 | `runner/server.mjs`          | 本机执行面：跑 CLI、落盘、探测工具                | 不做编排决策                                |
 | `prompts/flowBuilder.md`     | 自然语言 → 工作流定义的 AI 契约                   | 不保证输出严格结构（由 mcp.mjs 归一化兜底） |
-| `.skills/picop-mcp/SKILL.md` | 分发技能：触发判定、三步流程、格式选型、输出校验  | 不执行用户流程；只产出工作流产物            |
+| `.skills/picop/SKILL.md` | 分发技能：触发判定、三步流程、格式选型、输出校验  | 不执行用户流程；只产出工作流产物            |
 
 ### 3.4 关键契约（改动前必读）
 
@@ -174,7 +174,7 @@ workflow { nodes, edges }  ← 注意：此处为 flowBuilder 的「宽松结构
 | 导出共享核心    | [`shared/export-core.mjs`](shared/export-core.mjs)                               |
 | 画布导出转发层  | [`src/services/exporter.ts`](src/services/exporter.ts)                           |
 | 生成提示词契约  | [`prompts/flowBuilder.md`](prompts/flowBuilder.md)                               |
-| 分发技能        | [`.skills/picop-mcp/SKILL.md`](.skills/picop-mcp/SKILL.md)                       |
+| 分发技能        | [`.skills/picop/SKILL.md`](.skills/picop/SKILL.md)                       |
 | 平台接入说明    | [`README.md`](README.md)                                                         |
 | 使用教程文档    | [`picop-docs/docs/tutorial/mcp_skill.md`](picop-docs/docs/tutorial/mcp_skill.md) |
 | 本地 Runner     | [`runner/server.mjs`](runner/server.mjs)                                         |
